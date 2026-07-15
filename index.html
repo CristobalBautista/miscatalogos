@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Ruleta Anime</title>
+<title>Mis Catálogos</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#12111a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Ruleta Anime">
+<meta name="apple-mobile-web-app-title" content="Mis Catálogos">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="styles.css">
@@ -43,15 +43,25 @@
     <div class="tri-btn-row">
       <button class="tri-btn" id="animeGoCicloBtn">Seleccionar<br>por Ciclo</button>
       <button class="tri-btn hidden" id="animeGoNTBtn">Nuevas<br>Temporadas</button>
-      <button class="tri-btn disabled" id="animeGoListaBtn">Ver Lista<br>Completa</button>
+      <button class="tri-btn" id="animeGoListaBtn">Ver Lista<br>Completa</button>
     </div>
 
-    <div class="section-title">Historial</div>
+    <div class="section-row">
+      <div class="section-title">Historial</div>
+      <button class="undo-btn hidden" id="undoLink">↩ Deshacer</button>
+    </div>
     <table class="hist-table" id="histTable">
       <thead><tr><th>Era</th><th>Tipo</th><th>Nombre</th><th></th></tr></thead>
       <tbody id="histBody"></tbody>
     </table>
-    <div class="undo-link hidden" id="undoLink">↩ Deshacer última elección</div>
+  </div>
+
+  <!-- LISTA COMPLETA -->
+  <div id="view-lista" class="hidden">
+    <div class="back" id="backAnimeFromLista">← ANIME</div>
+    <div class="header"><h1>Lista Completa</h1></div>
+    <div class="nt-hint">Toca cualquier título para elegirlo como siguiente ahora mismo.</div>
+    <div class="lista-list" id="listaList"></div>
   </div>
 
   <!-- NUEVAS TEMPORADAS -->
@@ -112,6 +122,11 @@
       <div class="stat"><div class="stat-num" id="statPos">0/18</div><div class="stat-label">Ciclo</div></div>
       <div class="stat"><div class="stat-num" id="statEmo">0/3</div><div class="stat-label">Emotional</div></div>
       <div class="stat"><div class="stat-num" id="statCycleN">1</div><div class="stat-label">N° ciclo</div></div>
+    </div>
+
+    <div class="deck">
+      <div class="deck-title">Historial de esta bolsa</div>
+      <div class="mini-hist" id="miniHist"></div>
     </div>
   </div>
 
