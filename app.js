@@ -1,11 +1,13 @@
-const BAND_LABELS = { Peak:'Premium', Core:'Estándar', Chill:'Descanso' };
-const ERA_ORDER = ['Dorada','Modernos','Clasicos'];
-const BAND_ORDER = ['Peak','Core','Chill'];
+const BAND_ORDER = ['Elite','Normal','Ligera'];
+const ERA_ORDER = ['Dorada','Moderna','Clasica'];
+const ERA_LABELS = { Dorada:'Era Dorada', Moderna:'Era Moderna', Clasica:'Era Clásica' };
 const REP_EVERY = 3;
+const THEMES = ['dark-purple','dark-teal','dark-sunset','light'];
+const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'dark-teal':'#3fc9a8', 'dark-sunset':'#e8608f', 'light':'#ffffff' };
 
 let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
 let QUOTA = {};
-let CLASICOS_W = { Peak:0.34, Core:0.33, Chill:0.33 };
+let CLASICA_W = { Elite:0.34, Normal:0.33, Ligera:0.33 };
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
@@ -15,21 +17,19 @@ function isAvailable(plat){
   if(/Descargar/i.test(plat)) return false;
   return true;
 }
-const PLATFORM_ICONS = {
-  netflix: 'netflix', crunchyroll: 'crunchyroll', prime: 'primevideo',
-  disney: 'disneyplus', max: 'max'
-};
+const PLATFORM_ICONS = { netflix:'netflix', crunchyroll:'crunchyroll', prime:'primevideo', disney:'disneyplus', max:'max' };
 const PLATFORM_EMOJI = { netflix:'🔴', crunchyroll:'🟠', prime:'🔵', disney:'⭐', max:'🟣' };
 function detectPlatformKeys(plat){
   const p = (plat||'').toLowerCase();
   return Object.keys(PLATFORM_ICONS).filter(k => p.includes(k));
 }
-function platformIconsHtml(plat){
+function platformChipsHtml(plat){
   const keys = detectPlatformKeys(plat);
-  if(keys.length===0) return `<span>📺 ${esc(plat||'')}</span>`;
-  return keys.map(k => `<img src="https://cdn.simpleicons.org/${PLATFORM_ICONS[k]}" alt="${k}"
-    onerror="this.outerHTML='<span>${PLATFORM_EMOJI[k]}</span>'">`).join('') +
-    `<span>${keys.map(k=>k[0].toUpperCase()+k.slice(1)).join(' · ')}</span>`;
+  if(keys.length===0) return `<span class="plat-chip"><span>📺 ${esc(plat||'Sin dato')}</span></span>`;
+  return keys.map(k => `<span class="plat-chip">
+      <img src="https://cdn.simpleicons.org/${PLATFORM_ICONS[k]}" alt="${k}" onerror="this.outerHTML='${PLATFORM_EMOJI[k]}'">
+      <span>${k[0].toUpperCase()+k.slice(1)}</span>
+    </span>`).join('');
 }
 
 async function fetchCsv(path){
@@ -38,21 +38,18 @@ async function fetchCsv(path){
   return Papa.parse(text, {header:true, skipEmptyLines:true}).data;
 }
 
-// Reparto por "método del resto mayor" (largest remainder / Hamilton apportionment):
-// se calcula la proporción real Peak/Core/Chill del catálogo filtrado, se reparte
-// la parte entera de esos slots, y los "sobrantes" (decimales) se ordenan de mayor
-// a menor para asignar los slots que falten. Esto es matemáticamente el reparto
-// más fiel posible a las proporciones reales -- pero significa que la cuota SE
-// RECALCULA cada vez que el CSV cambia. Si hoy Descanso tiene más peso relativo en
-// el catálogo filtrado, le tocará 3 en vez de 2, aunque antes fueran 4/4/2.
+// Metodo del resto mayor (largest remainder / Hamilton): reparte los slots del
+// ciclo segun la proporcion real Elite/Normal/Ligera del catalogo YA FILTRADO
+// (sin Pendiente=X, sin no-disponibles). Se recalcula cada vez que cambia el CSV,
+// por eso el numero exacto puede moverse si editas la data.
 function largestRemainderQuota(counts, totalSlots){
-  const total = counts.Peak + counts.Core + counts.Chill;
-  if(total===0) return {Peak:0,Core:0,Chill:0};
-  const raw = { Peak: counts.Peak/total*totalSlots, Core: counts.Core/total*totalSlots, Chill: counts.Chill/total*totalSlots };
-  const floor = { Peak: Math.floor(raw.Peak), Core: Math.floor(raw.Core), Chill: Math.floor(raw.Chill) };
-  let used = floor.Peak+floor.Core+floor.Chill;
+  const total = counts.Elite + counts.Normal + counts.Ligera;
+  if(total===0) return {Elite:0,Normal:0,Ligera:0};
+  const raw = { Elite: counts.Elite/total*totalSlots, Normal: counts.Normal/total*totalSlots, Ligera: counts.Ligera/total*totalSlots };
+  const floor = { Elite: Math.floor(raw.Elite), Normal: Math.floor(raw.Normal), Ligera: Math.floor(raw.Ligera) };
+  let used = floor.Elite+floor.Normal+floor.Ligera;
   let remainder = totalSlots - used;
-  const rema = [['Peak', raw.Peak-floor.Peak],['Core', raw.Core-floor.Core],['Chill', raw.Chill-floor.Chill]].sort((a,b)=>b[1]-a[1]);
+  const rema = [['Elite', raw.Elite-floor.Elite],['Normal', raw.Normal-floor.Normal],['Ligera', raw.Ligera-floor.Ligera]].sort((a,b)=>b[1]-a[1]);
   for(let i=0;i<remainder;i++){ floor[rema[i%3][0]] += 1; }
   return floor;
 }
@@ -61,11 +58,11 @@ async function loadCatalog(){
   const [catalogo, nt] = await Promise.all([ fetchCsv('catalogo.csv'), fetchCsv('nuevas_temporadas.csv') ]);
 
   NUEVAS_TEMP = nt.map(r => ({
-    title: r.Nombre, eps: r.Eps||'', fecha: r.FechaFinalizacion||'N/A',
+    title: r.Nombre, eps: r.Eps||'',
     finished: !!(r.FechaFinalizacion && r.FechaFinalizacion.trim() && r.FechaFinalizacion.trim()!=='N/A')
   })).filter(r=>r.title);
 
-  const eraMap = { 'ERA DORADA':'Dorada', 'MODERNOS':'Modernos', 'CLASICOS':'Clasicos' };
+  const eraMap = { 'ERA DORADA':'Dorada', 'MODERNOS':'Moderna', 'CLASICOS':'Clasica' };
   const main = [], largas = [], rep = [], adulto = [];
 
   for(const r of catalogo){
@@ -80,7 +77,7 @@ async function loadCatalog(){
 
     if(cat in eraMap){
       const rating = parseFloat(r.Calificacion) || 0;
-      const band = rating>8.0 ? 'Peak' : (rating>=7.5 ? 'Core' : 'Chill');
+      const band = rating>8.0 ? 'Elite' : (rating>=7.5 ? 'Normal' : 'Ligera');
       main.push({ title:r.Nombre, era:eraMap[cat], rating, eps, emotional, band, plataforma:plat });
     } else if(cat === 'Largas'){
       largas.push({ title:r.Nombre, eps, emotional, plataforma:plat });
@@ -93,55 +90,54 @@ async function loadCatalog(){
 
   MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep;
 
-  for(const era of ['Dorada','Modernos']){
-    const counts = {Peak:0,Core:0,Chill:0};
+  for(const era of ['Dorada','Moderna']){
+    const counts = {Elite:0,Normal:0,Ligera:0};
     main.filter(m=>m.era===era).forEach(m=> counts[m.band]++);
     QUOTA[era] = largestRemainderQuota(counts, era==='Dorada'?10:6);
   }
-  const cCounts = {Peak:0,Core:0,Chill:0};
-  main.filter(m=>m.era==='Clasicos').forEach(m=> cCounts[m.band]++);
-  const cTotal = cCounts.Peak+cCounts.Core+cCounts.Chill || 1;
-  CLASICOS_W = { Peak:cCounts.Peak/cTotal, Core:cCounts.Core/cTotal, Chill:cCounts.Chill/cTotal };
+  const cCounts = {Elite:0,Normal:0,Ligera:0};
+  main.filter(m=>m.era==='Clasica').forEach(m=> cCounts[m.band]++);
+  const cTotal = cCounts.Elite+cCounts.Normal+cCounts.Ligera || 1;
+  CLASICA_W = { Elite:cCounts.Elite/cTotal, Normal:cCounts.Normal/cTotal, Ligera:cCounts.Ligera/cTotal };
 }
 
 function freshDeck(){
   const deck = [];
-  for(const era of ['Dorada','Modernos']){
+  for(const era of ['Dorada','Moderna']){
     for(const band of BAND_ORDER){
       const n = (QUOTA[era] && QUOTA[era][band]) || 0;
       for(let i=0;i<n;i++) deck.push({era, band, used:false});
     }
   }
-  for(let i=0;i<2;i++) deck.push({era:'Clasicos', band:null, used:false});
+  for(let i=0;i<2;i++) deck.push({era:'Clasica', band:null, used:false});
   return deck;
 }
-
 function weightedBandPick(w){
   const r = Math.random();
-  if(r < w.Peak) return 'Peak';
-  if(r < w.Peak+w.Core) return 'Core';
-  return 'Chill';
+  if(r < w.Elite) return 'Elite';
+  if(r < w.Elite+w.Normal) return 'Normal';
+  return 'Ligera';
 }
 
 function seedInitialState(){
   const deck = freshDeck();
   function useToken(era,band){ const t = deck.find(x=>!x.used && x.era===era && x.band===band); if(t) t.used = true; }
-  useToken('Dorada','Peak'); useToken('Dorada','Peak');
-  useToken('Dorada','Core');
-  useToken('Dorada','Chill');
-  useToken('Modernos','Core'); useToken('Modernos','Core');
+  useToken('Dorada','Elite'); useToken('Dorada','Elite');
+  useToken('Dorada','Normal');
+  useToken('Dorada','Ligera');
+  useToken('Moderna','Normal'); useToken('Moderna','Normal');
   return {
     usedTitles: ['Assassination Classroom','7th Time Loop','Ping Pong the Animation','Sacrificial Princess and the King of Beasts','Charlotte','Kakegurui'],
     deck: deck,
     history: [
-      {title:'Kakegurui', era:'Dorada', band:'Chill', emotional:false},
-      {title:'Charlotte', era:'Dorada', band:'Core', emotional:true},
-      {title:'Sacrificial Princess and the King of Beasts', era:'Modernos', band:'Core', emotional:true},
-      {title:'Ping Pong the Animation', era:'Dorada', band:'Peak', emotional:false},
-      {title:'7th Time Loop', era:'Modernos', band:'Core', emotional:false},
-      {title:'Assassination Classroom', era:'Dorada', band:'Peak', emotional:false}
+      {title:'Kakegurui', era:'Dorada', band:'Ligera', emotional:false},
+      {title:'Charlotte', era:'Dorada', band:'Normal', emotional:true},
+      {title:'Sacrificial Princess and the King of Beasts', era:'Moderna', band:'Normal', emotional:true},
+      {title:'Ping Pong the Animation', era:'Dorada', band:'Elite', emotional:false},
+      {title:'7th Time Loop', era:'Moderna', band:'Normal', emotional:false},
+      {title:'Assassination Classroom', era:'Dorada', band:'Elite', emotional:false}
     ],
-    emoCount: 2, lastEra:'Dorada', lastEra2:'Dorada', lastBand:'Chill', lastEmo:false,
+    emoCount: 2, lastEra:'Dorada', lastEra2:'Dorada', lastBand:'Ligera', lastEmo:false,
     cycleNum: 1,
     pendingPick: null,
     largaUsed: [], adultoUsed: [], repUsed: [],
@@ -149,6 +145,8 @@ function seedInitialState(){
     owed: {adulto:false, larga:false, repeticion:false},
     blocking: false,
     extra: null,
+    lastAction: null,
+    theme: 'dark-purple',
     view: 'home'
   };
 }
@@ -157,25 +155,51 @@ let state = null;
 async function loadState(){
   await loadCatalog();
   try{
-    const r = await window.storage.get('ruleta-anime-state-v5');
-    if(r && r.value){ state = JSON.parse(r.value); if(!state.seenNT) state.seenNT=[]; }
+    const r = await window.storage.get('ruleta-anime-state-v6');
+    if(r && r.value){ state = JSON.parse(r.value); if(!state.seenNT) state.seenNT=[]; if(!state.theme) state.theme='dark-purple'; }
     else { state = seedInitialState(); await saveState(); }
   }catch(e){ state = seedInitialState(); }
+  applyTheme(state.theme);
   document.getElementById('view-loading').classList.add('hidden');
   showView(state.view || 'home');
   render();
 }
 async function saveState(){
-  try{ await window.storage.set('ruleta-anime-state-v5', JSON.stringify(state)); }catch(e){ console.error(e); }
+  try{ await window.storage.set('ruleta-anime-state-v6', JSON.stringify(state)); }catch(e){ console.error(e); }
+}
+
+function applyTheme(t){ document.documentElement.setAttribute('data-theme', t); }
+function renderThemeRow(){
+  const row = document.getElementById('themeRow');
+  row.innerHTML = '';
+  THEMES.forEach(t=>{
+    const d = document.createElement('div');
+    d.className = 'theme-dot' + (state.theme===t ? ' active' : '');
+    d.style.background = THEME_SWATCH[t];
+    if(t==='light') d.style.border = '2px solid #ddd';
+    d.addEventListener('click', ()=>{ state.theme = t; applyTheme(t); renderThemeRow(); saveState(); });
+    row.appendChild(d);
+  });
 }
 
 function ntAvailableList(){ return NUEVAS_TEMP.filter(nt=>nt.finished && !state.seenNT.includes(nt.title)); }
+
+async function fadeToView(name){
+  const wrap = document.querySelector('.wrap');
+  wrap.style.transition = 'opacity .2s';
+  wrap.style.opacity = '0';
+  await wait(200);
+  showView(name);
+  await wait(30);
+  wrap.style.opacity = '1';
+}
 
 function showView(name){
   state.view = name;
   ['home','anime','nt','ciclo'].forEach(v=>{
     document.getElementById('view-'+v).classList.toggle('hidden', v!==name);
   });
+  if(name==='home') renderThemeRow();
   if(name==='anime') renderAnimeLanding();
   if(name==='nt') renderNuevasTemp();
   if(name==='ciclo') render();
@@ -189,7 +213,7 @@ document.getElementById('backAnimeFromNT').addEventListener('click', ()=> showVi
 document.getElementById('backAnimeFromCiclo').addEventListener('click', ()=> showView('anime'));
 document.getElementById('animeGoCicloBtn').addEventListener('click', ()=> showView('ciclo'));
 document.getElementById('animeGoNTBtn').addEventListener('click', ()=> showView('nt'));
-document.getElementById('ntContinueCicloBtn').addEventListener('click', ()=> showView('ciclo'));
+document.getElementById('animeGoListaBtn').addEventListener('click', ()=> toast('Próximamente: lista completa con posters'));
 
 function toast(msg){
   const t = document.createElement('div');
@@ -200,43 +224,67 @@ function toast(msg){
 }
 
 function renderAnimeLanding(){
-  document.getElementById('animeStatCiclo').textContent = state.deck.filter(t=>t.used).length + '/' + state.deck.length;
-  document.getElementById('animeStatN').textContent = state.cycleNum;
   const avail = ntAvailableList();
-  document.getElementById('animeStatNT').textContent = avail.length;
-  document.getElementById('animeGoNTRow').classList.toggle('hidden', avail.length===0);
+  document.getElementById('animeGoNTBtn').classList.toggle('hidden', avail.length===0);
+  renderHistoryTable();
+  document.getElementById('undoLink').classList.toggle('hidden', !state.lastAction);
 }
+function renderHistoryTable(){
+  const body = document.getElementById('histBody');
+  if(state.history.length===0){
+    body.innerHTML = `<tr><td colspan="4" style="color:var(--dim); text-align:center; padding:16px 6px;">Nada elegido aún</td></tr>`;
+    return;
+  }
+  body.innerHTML = state.history.map(h => `
+    <tr>
+      <td><span class="dot ${h.era}"></span>${esc(ERA_LABELS[h.era]||h.era)}</td>
+      <td>${esc(h.band||'')}</td>
+      <td class="name-cell">${esc(h.title)}</td>
+      <td>${h.emotional ? '<span style="color:var(--emo);">♥</span>' : ''}</td>
+    </tr>
+  `).join('');
+}
+document.getElementById('undoLink').addEventListener('click', ()=>{
+  if(!state.lastAction) return;
+  Object.assign(state, state.lastAction.snapshot);
+  state.lastAction = null;
+  saveState();
+  renderAnimeLanding();
+});
 
 function renderNuevasTemp(){
-  const el = document.getElementById('ntList');
-  el.innerHTML = '';
-  NUEVAS_TEMP.forEach(nt => {
-    const seen = state.seenNT.includes(nt.title);
-    const clickable = nt.finished && !seen;
-    const row = document.createElement(clickable ? 'button' : 'div');
-    row.className = 'nt-row' + (nt.finished?' finished':'') + (seen?' seen':'');
-    row.innerHTML = `
-      <div class="nt-dot"></div>
-      <div class="nt-title">${esc(nt.title)}</div>
-      <div class="nt-meta">${nt.eps?esc(nt.eps)+' · ':''}${esc(nt.fecha)}</div>
-      ${seen?'<span class="nt-badge seen">Vista</span>':(nt.finished?'<span class="nt-badge">Lista</span>':'')}
-    `;
-    if(clickable){
-      row.addEventListener('click', ()=> selectNuevaTemp(nt));
-    }
-    el.appendChild(row);
+  const grid = document.getElementById('ntGrid');
+  const avail = ntAvailableList();
+  if(avail.length===0){
+    grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:var(--dim); padding:20px;">No hay temporadas nuevas listas por ahora.</div>`;
+    return;
+  }
+  grid.innerHTML = avail.map(nt => `
+    <button class="nt-card" data-title="${esc(nt.title)}">
+      <div class="nt-poster">🎬</div>
+      <div class="nt-card-body">
+        <div class="nt-card-title">${esc(nt.title)}</div>
+        <div class="nt-card-meta">${nt.eps?esc(nt.eps):'—'}</div>
+      </div>
+    </button>
+  `).join('');
+  grid.querySelectorAll('.nt-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const nt = NUEVAS_TEMP.find(x=>x.title===card.dataset.title);
+      if(nt) selectNuevaTemp(nt);
+    });
   });
 }
 
-function selectNuevaTemp(nt){
+async function selectNuevaTemp(nt){
+  state.lastAction = { type:'nt', snapshot: JSON.parse(JSON.stringify({ history: state.history, seenNT: state.seenNT })) };
   state.seenNT.push(nt.title);
   state.history.unshift({title: nt.title, era:'Extra', band:'Nueva Temporada', emotional:false});
   saveState();
-  toast(`"${nt.title}" agregada al historial`);
-  showView('ciclo');
+  await fadeToView('anime');
 }
 
-// ---------------- core draw logic (ciclo normal) ----------------
+// ---------------- core draw logic ----------------
 function candidateTokens(){
   let avail = state.deck.filter(t=>!t.used);
   if(avail.length===0) return [];
@@ -247,10 +295,10 @@ function candidateTokens(){
 }
 function resolveBand(token){
   if(token.band) return token.band;
-  let band = weightedBandPick(CLASICOS_W);
-  if(state.lastBand==='Peak' && band==='Peak'){
-    const w2total = CLASICOS_W.Core+CLASICOS_W.Chill || 1;
-    band = Math.random() < (CLASICOS_W.Core/w2total) ? 'Core' : 'Chill';
+  let band = weightedBandPick(CLASICA_W);
+  if(state.lastBand==='Elite' && band==='Elite'){
+    const w2total = CLASICA_W.Normal+CLASICA_W.Ligera || 1;
+    band = Math.random() < (CLASICA_W.Normal/w2total) ? 'Normal' : 'Ligera';
   }
   return band;
 }
@@ -282,7 +330,16 @@ function drawNext(excludeEraBand){
   const band = resolveBand(token);
   return finishDraw(token, band);
 }
+function snapshotForUndo(){
+  return JSON.parse(JSON.stringify({
+    deck: state.deck, usedTitles: state.usedTitles, history: state.history,
+    emoCount: state.emoCount, lastEra: state.lastEra, lastEra2: state.lastEra2,
+    lastBand: state.lastBand, lastEmo: state.lastEmo, owed: state.owed,
+    blocking: state.blocking, cycleNum: state.cycleNum
+  }));
+}
 function commitPick(pick){
+  state.lastAction = { type:'ciclo', snapshot: snapshotForUndo() };
   const idx = state.deck.findIndex(t=>!t.used && t.era===pick.token.era && (t.band===pick.token.band || t.band===null));
   if(idx>=0) state.deck[idx].used = true;
   state.usedTitles.push(pick.title.title);
@@ -297,7 +354,6 @@ function startNewCycle(){
   state.lastEra = null; state.lastEra2 = null; state.lastBand = null; state.lastEmo = false;
 }
 
-// ---------------- extra pools ----------------
 function poolFor(cat){ return cat==='adulto'?ADULTO_POOL : cat==='larga'?LARGA_POOL : REP_POOL; }
 function usedArrFor(cat){ return cat==='adulto'?state.adultoUsed : cat==='larga'?state.largaUsed : state.repUsed; }
 function drawExtra(cat){
@@ -315,16 +371,29 @@ function commitExtra(cat, item){
   state.owed[cat] = false;
 }
 
-// ---------------- wheel ----------------
-function spinWheel(simple, duration){
-  const wheel = document.getElementById('wheel');
-  wheel.classList.toggle('simple', simple);
-  wheel.style.transition = 'none';
-  wheel.style.transform = 'rotate(0deg)';
-  void wheel.offsetWidth;
-  const totalDeg = 720 + Math.random()*180;
-  wheel.style.transition = `transform ${duration}s cubic-bezier(0.2,0.7,0.3,1)`;
-  requestAnimationFrame(()=>{ wheel.style.transform = `rotate(${totalDeg}deg)`; });
+// ---------------- dice animation ----------------
+const DICE_PATTERNS = {
+  1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8]
+};
+function buildDiceFace(){
+  const face = document.getElementById('diceFace');
+  face.innerHTML = '';
+  for(let i=0;i<9;i++){
+    const pip = document.createElement('div'); pip.className='dice-pip'; pip.dataset.i=i;
+    face.appendChild(pip);
+  }
+}
+function setDiceValue(n){
+  const pips = document.querySelectorAll('.dice-pip');
+  const on = new Set(DICE_PATTERNS[n]||[]);
+  pips.forEach((p,i)=> p.style.opacity = on.has(i) ? '1' : '0');
+}
+async function rollDice(durationMs){
+  buildDiceFace();
+  const start = Date.now();
+  let iv = setInterval(()=>{ setDiceValue(1+Math.floor(Math.random()*6)); }, 90);
+  await wait(durationMs);
+  clearInterval(iv);
 }
 
 function setupCardSkeleton(){
@@ -342,25 +411,23 @@ function addTag(container, text, cls){
   container.appendChild(span);
   requestAnimationFrame(()=> span.classList.add('fade-in'));
 }
-
 async function revealPickNormal(pick){
   setupCardSkeleton();
   const tags = document.getElementById('rvTags');
   const titleEl = document.getElementById('rvTitle');
   const metaEl = document.getElementById('rvMeta');
   const platEl = document.getElementById('rvPlat');
-  await wait(120);
-  addTag(tags, pick.token.era, 'era-'+pick.token.era);
-  await wait(700);
-  addTag(tags, BAND_LABELS[pick.token.band], 'band-'+pick.token.band);
-  await wait(700);
-  if(pick.title.emotional){ addTag(tags, 'Emotional', 'emo'); }
-  await wait(700);
+  await wait(80);
+  addTag(tags, ERA_LABELS[pick.token.era]||pick.token.era, 'era-'+pick.token.era);
+  await wait(380);
+  addTag(tags, pick.token.band, 'band-'+pick.token.band);
+  await wait(380);
+  if(pick.title.emotional){ addTag(tags, 'Emotional', 'emo'); await wait(200); }
   titleEl.textContent = pick.title.title;
   titleEl.classList.add('fade-in');
   metaEl.textContent = `★ ${pick.title.rating.toFixed(2)} · ${pick.title.eps} eps`;
   metaEl.classList.add('fade-in');
-  platEl.innerHTML = platformIconsHtml(pick.title.plataforma);
+  platEl.innerHTML = platformChipsHtml(pick.title.plataforma);
   platEl.classList.add('fade-in');
 }
 async function revealPickExtra(item, cat){
@@ -370,16 +437,15 @@ async function revealPickExtra(item, cat){
   const metaEl = document.getElementById('rvMeta');
   const platEl = document.getElementById('rvPlat');
   const label = cat==='adulto'?'Adulto':cat==='larga'?'Larga':'Repetición';
-  await wait(120);
+  await wait(80);
   addTag(tags, label, 'era-Extra');
-  await wait(700);
-  if(item.emotional){ addTag(tags, 'Emotional', 'emo'); }
-  await wait(700);
+  await wait(380);
+  if(item.emotional){ addTag(tags, 'Emotional', 'emo'); await wait(200); }
   titleEl.textContent = item.title;
   titleEl.classList.add('fade-in');
   metaEl.textContent = `${item.eps} eps`;
   metaEl.classList.add('fade-in');
-  platEl.innerHTML = platformIconsHtml(item.plataforma);
+  platEl.innerHTML = platformChipsHtml(item.plataforma);
   platEl.classList.add('fade-in');
 }
 
@@ -397,14 +463,13 @@ async function startDrawNormal(){
   document.getElementById('normalRow').classList.add('hidden');
   document.getElementById('confirmRow').classList.add('hidden');
   document.getElementById('gateBox').classList.add('hidden');
-  document.getElementById('cardArea').classList.add('hidden');
-  const wrap = document.getElementById('wheelWrap');
+  const cardArea = document.getElementById('cardArea');
+  cardArea.style.opacity = '0';
+  const wrap = document.getElementById('diceWrap');
   wrap.style.display = 'flex';
-  document.getElementById('wheelLabel').textContent = 'Girando…';
-  spinWheel(false, 0.5);
-  await wait(580);
+  await rollDice(1000);
   wrap.style.display = 'none';
-  document.getElementById('cardArea').classList.remove('hidden');
+  cardArea.style.opacity = '1';
 
   let result = drawNext(null);
   if(!result){
@@ -419,13 +484,12 @@ async function startDrawNormal(){
   document.getElementById('confirmRow').classList.remove('hidden');
   disableAllActionButtons(false);
 }
-
 document.getElementById('nextBtn').addEventListener('click', startDrawNormal);
 document.getElementById('redoBtn').addEventListener('click', async ()=>{
   state.pendingPick = null;
   await startDrawNormal();
 });
-document.getElementById('confirmBtn').addEventListener('click', ()=>{
+document.getElementById('confirmBtn').addEventListener('click', async ()=>{
   commitPick(state.pendingPick);
   document.getElementById('confirmRow').classList.add('hidden');
   const remaining = state.deck.filter(t=>!t.used).length;
@@ -435,12 +499,10 @@ document.getElementById('confirmBtn').addEventListener('click', ()=>{
     if(state.cycleNum % REP_EVERY === 0) state.owed.repeticion = true;
     state.blocking = true;
     saveState();
-    render();
   } else {
-    document.getElementById('normalRow').classList.remove('hidden');
     saveState();
-    render();
   }
+  await fadeToView('anime');
 });
 
 async function startDrawExtra(cat, fromGate){
@@ -451,14 +513,13 @@ async function startDrawExtra(cat, fromGate){
   document.getElementById('confirmRow').classList.add('hidden');
   document.getElementById('confirmExtraRow').classList.add('hidden');
   document.getElementById('continueExtraRow').classList.add('hidden');
-  document.getElementById('cardArea').classList.add('hidden');
-  const wrap = document.getElementById('wheelWrap');
+  const cardArea = document.getElementById('cardArea');
+  cardArea.style.opacity = '0';
+  const wrap = document.getElementById('diceWrap');
   wrap.style.display = 'flex';
-  document.getElementById('wheelLabel').textContent = 'Girando…';
-  spinWheel(true, 0.5);
-  await wait(580);
+  await rollDice(1000);
   wrap.style.display = 'none';
-  document.getElementById('cardArea').classList.remove('hidden');
+  cardArea.style.opacity = '1';
 
   const item = drawExtra(cat);
   if(!item){ toast('Sin títulos en esta categoría'); render(); disableAllActionButtons(false); return; }
@@ -472,9 +533,8 @@ async function startDrawExtra(cat, fromGate){
 document.getElementById('gateAdultoBtn').addEventListener('click', ()=> startDrawExtra('adulto', true));
 document.getElementById('gateLargaBtn').addEventListener('click', ()=> startDrawExtra('larga', true));
 document.getElementById('gateRepBtn').addEventListener('click', ()=> startDrawExtra('repeticion', true));
-
 document.getElementById('redoExtraBtn').addEventListener('click', ()=> startDrawExtra(state.extra.category, state.extra.fromGate));
-document.getElementById('confirmExtraBtn').addEventListener('click', ()=>{
+document.getElementById('confirmExtraBtn').addEventListener('click', async ()=>{
   const cat = state.extra.category;
   const fromGate = state.extra.fromGate;
   commitExtra(cat, state.extra.item);
@@ -482,19 +542,14 @@ document.getElementById('confirmExtraBtn').addEventListener('click', ()=>{
   document.getElementById('confirmExtraRow').classList.add('hidden');
   document.getElementById('continueExtraRow').classList.add('hidden');
 
-  if(!fromGate){
-    document.getElementById('normalRow').classList.remove('hidden');
-    saveState(); render();
-    return;
-  }
+  if(!fromGate){ saveState(); await fadeToView('anime'); return; }
   const stillOwed = state.owed.adulto || state.owed.larga || state.owed.repeticion;
-  if(state.blocking && stillOwed){ render(); }
-  else {
+  if(!(state.blocking && stillOwed)){
     state.blocking = false;
     startNewCycle();
-    document.getElementById('normalRow').classList.remove('hidden');
-    saveState(); render();
   }
+  saveState();
+  await fadeToView('anime');
 });
 document.getElementById('gateContinueBtn').addEventListener('click', ()=>{
   state.blocking = false; state.extra = null;
@@ -533,67 +588,15 @@ function renderPendingPills(){
   }
 }
 
-document.getElementById('resetCycleLink').addEventListener('click', ()=>{
-  if(!confirm('¿Reiniciar la bolsa del ciclo actual? Lo ya visto se mantiene marcado.')) return;
-  startNewCycle(); state.history = []; state.pendingPick = null;
-  state.blocking=false; state.extra=null;
-  render(); saveState();
-});
-document.getElementById('resetAllLink').addEventListener('click', ()=>{
-  if(!confirm('¿Borrar TODO lo visto y reiniciar desde cero?')) return;
-  state.usedTitles = []; startNewCycle(); state.history = []; state.pendingPick = null;
-  state.cycleNum = 1; state.owed={adulto:false,larga:false,repeticion:false}; state.blocking=false; state.extra=null;
-  render(); saveState();
-});
-document.getElementById('reloadCatalogLink').addEventListener('click', async ()=>{
-  await loadCatalog();
-  toast('Catálogo recargado');
-  render();
-});
-
 function render(){
-  renderDeck();
   renderStats();
-  renderHistory();
   renderPendingPills();
   renderGateOrNormal();
-}
-function renderDeck(){
-  const grid = document.getElementById('deckGrid');
-  grid.innerHTML = '';
-  for(const era of ERA_ORDER){
-    const row = document.createElement('div'); row.className='deck-row';
-    const label = document.createElement('div'); label.className='deck-era-label';
-    label.style.color = era==='Dorada'?'var(--dorada)':era==='Modernos'?'var(--nuevo)':'var(--viejo)';
-    label.textContent = era; row.appendChild(label);
-    const chips = document.createElement('div'); chips.className='chips';
-    for(const t of state.deck.filter(t=>t.era===era)){
-      const c = document.createElement('div'); c.className='chip'+(t.used?' used':'');
-      const col = era==='Dorada'?'#e8b854':era==='Modernos'?'#4fd0c8':'#d17b52';
-      c.style.borderColor = col; if(!t.used) c.style.background = col;
-      chips.appendChild(c);
-    }
-    row.appendChild(chips); grid.appendChild(row);
-  }
 }
 function renderStats(){
   document.getElementById('statPos').textContent = state.deck.filter(t=>t.used).length + '/' + state.deck.length;
   document.getElementById('statEmo').textContent = state.emoCount + '/3';
   document.getElementById('statCycleN').textContent = state.cycleNum;
-}
-function renderHistory(){
-  const el = document.getElementById('historyList');
-  if(state.history.length===0){ el.innerHTML = '<div style="color:var(--dim); font-size:12.5px;">Nada elegido aún</div>'; return; }
-  el.innerHTML = state.history.map((h,i)=>`
-    <div class="history-item">
-      <span class="history-num">${state.history.length-i}</span>
-      <span class="history-dot ${h.era}"></span>
-      <span class="history-era">${esc(h.era)}</span>
-      <span class="history-band">${esc(BAND_LABELS[h.band]||h.band||'')}</span>
-      <span class="history-title">${esc(h.title)}</span>
-      ${h.emotional ? '<span style="color:var(--emo); font-size:11px;">♥</span>' : ''}
-    </div>
-  `).join('');
 }
 function renderGateOrNormal(){
   const gateBox = document.getElementById('gateBox');

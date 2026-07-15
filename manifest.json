@@ -1,7 +1,7 @@
 {
   "name": "Ruleta de Anime",
   "short_name": "Ruleta Anime",
-  "start_url": "./ruleta_anime.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#12111a",
