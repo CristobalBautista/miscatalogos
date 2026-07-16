@@ -2,8 +2,8 @@ const BAND_ORDER = ['Elite','Normal','Ligera'];
 const ERA_ORDER = ['Dorada','Moderna','Clasica'];
 const ERA_LABELS = { Dorada:'Era Dorada', Moderna:'Era Moderna', Clasica:'Era Clásica' };
 const REP_EVERY = 3;
-const THEMES = ['dark-purple','dark-teal','dark-sunset','light'];
-const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'dark-teal':'#3fc9a8', 'dark-sunset':'#e8608f', 'light':'#ffffff' };
+const THEMES = ['dark-purple','mal-blue','trakt-red','gold-black','light'];
+const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'mal-blue':'#3f7fe0', 'trakt-red':'#ed1c24', 'gold-black':'#f5c518', 'light':'#5b4fd1' };
 
 let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
 let QUOTA = {};
@@ -186,22 +186,23 @@ function ntAvailableList(){ return NUEVAS_TEMP.filter(nt=>nt.finished && !state.
 
 async function fadeToView(name){
   const wrap = document.querySelector('.wrap');
-  wrap.style.transition = 'opacity .2s';
+  wrap.style.transition = 'opacity .45s';
   wrap.style.opacity = '0';
-  await wait(200);
+  await wait(450);
   showView(name);
-  await wait(30);
+  await wait(60);
   wrap.style.opacity = '1';
 }
 
 function showView(name){
   state.view = name;
-  ['home','anime','nt','ciclo'].forEach(v=>{
+  ['home','anime','nt','ciclo','lista'].forEach(v=>{
     document.getElementById('view-'+v).classList.toggle('hidden', v!==name);
   });
   if(name==='home') renderThemeRow();
   if(name==='anime') renderAnimeLanding();
   if(name==='nt') renderNuevasTemp();
+  if(name==='lista') renderListaCompleta();
   if(name==='ciclo') render();
   saveState();
 }
@@ -211,9 +212,14 @@ document.getElementById('goMovies').addEventListener('click', ()=> toast('Próxi
 document.getElementById('backHomeFromAnime').addEventListener('click', ()=> showView('home'));
 document.getElementById('backAnimeFromNT').addEventListener('click', ()=> showView('anime'));
 document.getElementById('backAnimeFromCiclo').addEventListener('click', ()=> showView('anime'));
-document.getElementById('animeGoCicloBtn').addEventListener('click', ()=> showView('ciclo'));
+document.getElementById('animeGoCicloBtn').addEventListener('click', ()=>{
+  state.pendingPick = null;
+  document.getElementById('cardArea').innerHTML = '<div class="card-empty">Presiona "Elegir siguiente" para empezar</div>';
+  showView('ciclo');
+});
 document.getElementById('animeGoNTBtn').addEventListener('click', ()=> showView('nt'));
-document.getElementById('animeGoListaBtn').addEventListener('click', ()=> toast('Próximamente: lista completa con posters'));
+document.getElementById('animeGoListaBtn').addEventListener('click', ()=> showView('lista'));
+document.getElementById('backAnimeFromLista').addEventListener('click', ()=> showView('anime'));
 
 function toast(msg){
   const t = document.createElement('div');
@@ -235,14 +241,53 @@ function renderHistoryTable(){
     body.innerHTML = `<tr><td colspan="4" style="color:var(--dim); text-align:center; padding:16px 6px;">Nada elegido aún</td></tr>`;
     return;
   }
-  body.innerHTML = state.history.map(h => `
-    <tr>
+  body.innerHTML = state.history.map((h,i) => `
+    <tr class="${i===0?'latest':''}">
       <td><span class="dot ${h.era}"></span>${esc(ERA_LABELS[h.era]||h.era)}</td>
       <td>${esc(h.band||'')}</td>
       <td class="name-cell">${esc(h.title)}</td>
       <td>${h.emotional ? '<span style="color:var(--emo);">♥</span>' : ''}</td>
     </tr>
   `).join('');
+}
+function renderMiniHist(){
+  const el = document.getElementById('miniHist');
+  if(!el) return;
+  if(state.history.length===0){ el.innerHTML = '<div style="color:var(--dim); font-size:12.5px;">Nada elegido aún</div>'; return; }
+  el.innerHTML = state.history.map((h,i)=>`
+    <div class="mini-hist-item ${i===0?'latest':''}">
+      <span class="mini-hist-dot ${h.era}"></span>
+      <span class="mini-hist-title">${esc(h.title)}</span>
+      ${h.emotional ? '<span style="color:var(--emo); font-size:11px;">♥</span>' : ''}
+    </div>
+  `).join('');
+}
+function renderListaCompleta(){
+  const el = document.getElementById('listaList');
+  const usedSet = new Set(state.usedTitles);
+  const items = MAIN_POOL.filter(a=>!usedSet.has(a.title)).slice().sort((a,b)=> a.title.localeCompare(b.title));
+  if(items.length===0){ el.innerHTML = '<div style="padding:20px; text-align:center; color:var(--dim);">Sin títulos pendientes.</div>'; return; }
+  el.innerHTML = items.map(a => `
+    <button class="lista-row" data-title="${esc(a.title)}">
+      <span class="lista-era-dot" style="background:var(--${a.era.toLowerCase()})"></span>
+      <span class="lista-name">${esc(a.title)}</span>
+      <span class="lista-meta">${esc(ERA_LABELS[a.era]||a.era)} · ${a.eps} eps</span>
+      <span class="lista-plat">${platformChipsHtml(a.plataforma)}</span>
+    </button>
+  `).join('');
+  el.querySelectorAll('.lista-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const item = MAIN_POOL.find(a=>a.title===row.dataset.title);
+      if(item) selectFromLista(item);
+    });
+  });
+}
+async function selectFromLista(item){
+  state.lastAction = { type:'lista', snapshot: JSON.parse(JSON.stringify({ history: state.history, usedTitles: state.usedTitles })) };
+  state.usedTitles.push(item.title);
+  state.history.unshift({title:item.title, era:item.era, band:item.band, emotional:item.emotional});
+  saveState();
+  await fadeToView('anime');
 }
 document.getElementById('undoLink').addEventListener('click', ()=>{
   if(!state.lastAction) return;
@@ -390,10 +435,18 @@ function setDiceValue(n){
 }
 async function rollDice(durationMs){
   buildDiceFace();
-  const start = Date.now();
-  let iv = setInterval(()=>{ setDiceValue(1+Math.floor(Math.random()*6)); }, 90);
-  await wait(durationMs);
-  clearInterval(iv);
+  const dice = document.getElementById('dice');
+  const tickMs = 150;
+  const ticks = Math.max(1, Math.floor(durationMs/tickMs));
+  for(let i=0;i<ticks;i++){
+    const rx = Math.floor(Math.random()*4)*90;
+    const ry = Math.floor(Math.random()*4)*90;
+    dice.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`;
+    setDiceValue(1+Math.floor(Math.random()*6));
+    await wait(tickMs);
+  }
+  dice.style.transform = 'rotateX(360deg) rotateY(360deg)';
+  await wait(150);
 }
 
 function setupCardSkeleton(){
@@ -417,12 +470,12 @@ async function revealPickNormal(pick){
   const titleEl = document.getElementById('rvTitle');
   const metaEl = document.getElementById('rvMeta');
   const platEl = document.getElementById('rvPlat');
-  await wait(80);
+  await wait(150);
   addTag(tags, ERA_LABELS[pick.token.era]||pick.token.era, 'era-'+pick.token.era);
-  await wait(380);
+  await wait(500);
   addTag(tags, pick.token.band, 'band-'+pick.token.band);
-  await wait(380);
-  if(pick.title.emotional){ addTag(tags, 'Emotional', 'emo'); await wait(200); }
+  await wait(500);
+  if(pick.title.emotional){ addTag(tags, 'Emotional', 'emo'); await wait(300); }
   titleEl.textContent = pick.title.title;
   titleEl.classList.add('fade-in');
   metaEl.textContent = `★ ${pick.title.rating.toFixed(2)} · ${pick.title.eps} eps`;
@@ -437,10 +490,10 @@ async function revealPickExtra(item, cat){
   const metaEl = document.getElementById('rvMeta');
   const platEl = document.getElementById('rvPlat');
   const label = cat==='adulto'?'Adulto':cat==='larga'?'Larga':'Repetición';
-  await wait(80);
+  await wait(150);
   addTag(tags, label, 'era-Extra');
-  await wait(380);
-  if(item.emotional){ addTag(tags, 'Emotional', 'emo'); await wait(200); }
+  await wait(500);
+  if(item.emotional){ addTag(tags, 'Emotional', 'emo'); await wait(300); }
   titleEl.textContent = item.title;
   titleEl.classList.add('fade-in');
   metaEl.textContent = `${item.eps} eps`;
@@ -467,7 +520,7 @@ async function startDrawNormal(){
   cardArea.style.opacity = '0';
   const wrap = document.getElementById('diceWrap');
   wrap.style.display = 'flex';
-  await rollDice(1000);
+  await rollDice(1900);
   wrap.style.display = 'none';
   cardArea.style.opacity = '1';
 
@@ -517,7 +570,7 @@ async function startDrawExtra(cat, fromGate){
   cardArea.style.opacity = '0';
   const wrap = document.getElementById('diceWrap');
   wrap.style.display = 'flex';
-  await rollDice(1000);
+  await rollDice(1900);
   wrap.style.display = 'none';
   cardArea.style.opacity = '1';
 
@@ -592,6 +645,7 @@ function render(){
   renderStats();
   renderPendingPills();
   renderGateOrNormal();
+  renderMiniHist();
 }
 function renderStats(){
   document.getElementById('statPos').textContent = state.deck.filter(t=>t.used).length + '/' + state.deck.length;
