@@ -75,6 +75,19 @@ function detectPlatformKeys(plat){
   return Object.keys(PLATFORM_ICONS).filter(k => p.includes(k));
 }
 
+// La columna Plataforma a veces trae comentarios pegados ademas del nombre
+// de la plataforma (ej. "Crunchyroll (Stay no)", "Netflix 1 2 Crunchyroll
+// mas de 3"). Esta funcion quita los nombres de plataforma conocidos y
+// devuelve lo que sobra (limpio de parentesis/espacios extra), para no
+// perder esa aclaracion al mostrar la tarjeta.
+function platformExtraNote(plat){
+  if(!plat) return '';
+  let txt = plat;
+  Object.keys(PLATFORM_ICONS).forEach(k => { txt = txt.replace(new RegExp(k, 'gi'), ''); });
+  txt = txt.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
+  return txt;
+}
+
 // Descarga un CSV y lo convierte a un array de objetos {columna: valor} usando
 // PapaParse. cache:'no-store' evita que el navegador sirva una copia vieja del
 // archivo despues de que edites el CSV en Excel y lo vuelvas a subir.
@@ -185,7 +198,8 @@ function seedInitialState(){
     lastAction: null,
     theme: 'dark-purple',
     view: 'home',
-    devMode: false
+    devMode: false,
+    listaCols: 2
   };
 }
 

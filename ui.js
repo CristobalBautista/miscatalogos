@@ -149,26 +149,18 @@ function renderAnimeLanding(){
   renderHistoryTable();
   document.getElementById('undoLink').classList.toggle('hidden', !state.lastAction);
 }
-// Quita el prefijo "Era " de ERA_LABELS solo para esta tabla -- la columna
-// ya se llama "Era", repetirlo en cada fila es redundante (ej. "Dorada" en
-// vez de "Era Dorada"). El resto de la app (tag de revelado, panel dev)
-// sigue usando ERA_LABELS completo tal cual, sin tocar.
-function eraShortLabel(era){
-  return (ERA_LABELS[era]||era).replace(/^Era\s+/i, '');
-}
 function renderHistoryTable(){
   const body = document.getElementById('histBody');
   if(state.history.length===0){
-    body.innerHTML = `<tr><td colspan="5" style="color:var(--dim); text-align:center; padding:18px 6px;">Nada elegido aún</td></tr>`;
+    body.innerHTML = `<tr><td colspan="4" style="color:var(--dim); text-align:center; padding:16px 6px;">Nada elegido aún</td></tr>`;
     return;
   }
   body.innerHTML = state.history.map((h,i) => `
     <tr class="${i===0?'latest':''}">
-      <td class="col-img"><div class="hist-thumb">🎬</div></td>
-      <td class="name-cell">${esc(h.title)}</td>
-      <td><span class="era-cell"><span class="dot ${h.era}"></span>${esc(eraShortLabel(h.era))}</span></td>
+      <td><span class="dot ${h.era}"></span>${esc(ERA_LABELS[h.era]||h.era)}</td>
       <td>${esc(h.band||'')}</td>
-      <td class="col-emo">${h.emotional ? '<span style="color:var(--emo);">♥</span>' : ''}</td>
+      <td class="name-cell">${esc(h.title)}</td>
+      <td>${h.emotional ? '<span style="color:var(--emo);">♥</span>' : ''}</td>
     </tr>
   `).join('');
 }
