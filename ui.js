@@ -1,28 +1,15 @@
-const BAND_ORDER = ['Elite','Normal','Ligera'];
-const ERA_ORDER = ['Dorada','Moderna','Clasica'];
-const ERA_LABELS = { Dorada:'Era Dorada', Moderna:'Era Moderna', Clasica:'Era Clásica' };
-const REP_EVERY = 3;
-const THEMES = ['dark-purple','mal-blue','trakt-red','gold-black','light'];
-const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'mal-blue':'#3f7fe0', 'trakt-red':'#ed1c24', 'gold-black':'#f5c518', 'light':'#5b4fd1' };
+/* ============================================================
+   ui.js -- Todo lo que toca pantalla: navegacion entre vistas,
+   renderizado de listas/tablas, animaciones (dado, fundidos),
+   manejo de eventos de botones, y el arranque de la app.
+   Depende de logic.js (debe cargarse despues en index.html) --
+   usa sus funciones (drawNext, commitPick, loadCatalog, etc) y
+   sus variables (state, MAIN_POOL, etc).
+   ============================================================ */
 
-let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
-let QUOTA = {};
-let CLASICA_W = { Elite:0.34, Normal:0.33, Ligera:0.33 };
-
-function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
-function isAvailable(plat){
-  if(!plat) return false;
-  if(/\bX\b/.test(plat)) return false;
-  if(/Descargar/i.test(plat)) return false;
-  return true;
-}
-const PLATFORM_ICONS = { netflix:'netflix', crunchyroll:'crunchyroll', prime:'primevideo', disney:'disneyplus', max:'max' };
-const PLATFORM_EMOJI = { netflix:'🔴', crunchyroll:'🟠', prime:'🔵', disney:'⭐', max:'🟣' };
-function detectPlatformKeys(plat){
-  const p = (plat||'').toLowerCase();
-  return Object.keys(PLATFORM_ICONS).filter(k => p.includes(k));
-}
+// ============ FORMATO DE DATOS PARA MOSTRAR ============
+// Convierte el texto crudo de la columna Plataforma en chips visuales
+// con icono (usa detectPlatformKeys de logic.js).
 function platformChipsHtml(plat){
   const keys = detectPlatformKeys(plat);
   if(keys.length===0) return `<span class="plat-chip"><span>📺 ${esc(plat||'Sin dato')}</span></span>`;
@@ -32,126 +19,12 @@ function platformChipsHtml(plat){
     </span>`).join('');
 }
 
-async function fetchCsv(path){
-  const res = await fetch(path, {cache:'no-store'});
-  const text = await res.text();
-  return Papa.parse(text, {header:true, skipEmptyLines:true}).data;
-}
 
-// Metodo del resto mayor (largest remainder / Hamilton): reparte los slots del
-// ciclo segun la proporcion real Elite/Normal/Ligera del catalogo YA FILTRADO
-// (sin Pendiente=X, sin no-disponibles). Se recalcula cada vez que cambia el CSV,
-// por eso el numero exacto puede moverse si editas la data.
-function largestRemainderQuota(counts, totalSlots){
-  const total = counts.Elite + counts.Normal + counts.Ligera;
-  if(total===0) return {Elite:0,Normal:0,Ligera:0};
-  const raw = { Elite: counts.Elite/total*totalSlots, Normal: counts.Normal/total*totalSlots, Ligera: counts.Ligera/total*totalSlots };
-  const floor = { Elite: Math.floor(raw.Elite), Normal: Math.floor(raw.Normal), Ligera: Math.floor(raw.Ligera) };
-  let used = floor.Elite+floor.Normal+floor.Ligera;
-  let remainder = totalSlots - used;
-  const rema = [['Elite', raw.Elite-floor.Elite],['Normal', raw.Normal-floor.Normal],['Ligera', raw.Ligera-floor.Ligera]].sort((a,b)=>b[1]-a[1]);
-  for(let i=0;i<remainder;i++){ floor[rema[i%3][0]] += 1; }
-  return floor;
-}
 
-async function loadCatalog(){
-  const [catalogo, nt] = await Promise.all([ fetchCsv('catalogo.csv'), fetchCsv('nuevas_temporadas.csv') ]);
-
-  NUEVAS_TEMP = nt.map(r => ({
-    title: r.Nombre, eps: r.Eps||'',
-    finished: !!(r.FechaFinalizacion && r.FechaFinalizacion.trim() && r.FechaFinalizacion.trim()!=='N/A')
-  })).filter(r=>r.title);
-
-  const eraMap = { 'ERA DORADA':'Dorada', 'MODERNOS':'Moderna', 'CLASICOS':'Clasica' };
-  const main = [], largas = [], rep = [], adulto = [];
-
-  for(const r of catalogo){
-    if(!r.Nombre) continue;
-    const pend = (r.PendienteTemporada||'').trim();
-    if(pend === 'X') continue;
-    const plat = (r.Plataforma||'').trim();
-    if(!isAvailable(plat)) continue;
-    const cat = (r.Categoria||'').trim();
-    const eps = parseInt(r.Eps) || 0;
-    const emotional = (r.Emotional||'').trim()==='X';
-
-    if(cat in eraMap){
-      const rating = parseFloat(r.Calificacion) || 0;
-      const band = rating>8.0 ? 'Elite' : (rating>=7.5 ? 'Normal' : 'Ligera');
-      main.push({ title:r.Nombre, era:eraMap[cat], rating, eps, emotional, band, plataforma:plat });
-    } else if(cat === 'Largas'){
-      largas.push({ title:r.Nombre, eps, emotional, plataforma:plat });
-    } else if(cat === 'Repetir Mejores'){
-      rep.push({ title:r.Nombre, eps, emotional, plataforma:plat });
-    } else if(cat === 'Adult Cartoon'){
-      adulto.push({ title:r.Nombre, eps, emotional, plataforma:plat });
-    }
-  }
-
-  MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep;
-
-  for(const era of ['Dorada','Moderna']){
-    const counts = {Elite:0,Normal:0,Ligera:0};
-    main.filter(m=>m.era===era).forEach(m=> counts[m.band]++);
-    QUOTA[era] = largestRemainderQuota(counts, era==='Dorada'?10:6);
-  }
-  const cCounts = {Elite:0,Normal:0,Ligera:0};
-  main.filter(m=>m.era==='Clasica').forEach(m=> cCounts[m.band]++);
-  const cTotal = cCounts.Elite+cCounts.Normal+cCounts.Ligera || 1;
-  CLASICA_W = { Elite:cCounts.Elite/cTotal, Normal:cCounts.Normal/cTotal, Ligera:cCounts.Ligera/cTotal };
-}
-
-function freshDeck(){
-  const deck = [];
-  for(const era of ['Dorada','Moderna']){
-    for(const band of BAND_ORDER){
-      const n = (QUOTA[era] && QUOTA[era][band]) || 0;
-      for(let i=0;i<n;i++) deck.push({era, band, used:false});
-    }
-  }
-  for(let i=0;i<2;i++) deck.push({era:'Clasica', band:null, used:false});
-  return deck;
-}
-function weightedBandPick(w){
-  const r = Math.random();
-  if(r < w.Elite) return 'Elite';
-  if(r < w.Elite+w.Normal) return 'Normal';
-  return 'Ligera';
-}
-
-function seedInitialState(){
-  const deck = freshDeck();
-  function useToken(era,band){ const t = deck.find(x=>!x.used && x.era===era && x.band===band); if(t) t.used = true; }
-  useToken('Dorada','Elite'); useToken('Dorada','Elite');
-  useToken('Dorada','Normal');
-  useToken('Dorada','Ligera');
-  useToken('Moderna','Normal'); useToken('Moderna','Normal');
-  return {
-    usedTitles: ['Assassination Classroom','7th Time Loop','Ping Pong the Animation','Sacrificial Princess and the King of Beasts','Charlotte','Kakegurui'],
-    deck: deck,
-    history: [
-      {title:'Kakegurui', era:'Dorada', band:'Ligera', emotional:false},
-      {title:'Charlotte', era:'Dorada', band:'Normal', emotional:true},
-      {title:'Sacrificial Princess and the King of Beasts', era:'Moderna', band:'Normal', emotional:true},
-      {title:'Ping Pong the Animation', era:'Dorada', band:'Elite', emotional:false},
-      {title:'7th Time Loop', era:'Moderna', band:'Normal', emotional:false},
-      {title:'Assassination Classroom', era:'Dorada', band:'Elite', emotional:false}
-    ],
-    emoCount: 2, lastEra:'Dorada', lastEra2:'Dorada', lastBand:'Ligera', lastEmo:false,
-    cycleNum: 1,
-    pendingPick: null,
-    largaUsed: [], adultoUsed: [], repUsed: [],
-    seenNT: [],
-    owed: {adulto:false, larga:false, repeticion:false},
-    blocking: false,
-    extra: null,
-    lastAction: null,
-    theme: 'dark-purple',
-    view: 'home'
-  };
-}
-let state = null;
-
+// ============ ARRANQUE DE LA APP ============
+// Esto es lo primero que corre (ver el final del archivo). Carga el
+// catalogo, recupera el estado guardado (o crea uno nuevo la primera vez),
+// aplica el tema y muestra la vista donde el usuario se quedo.
 async function loadState(){
   await loadCatalog();
   try{
@@ -164,10 +37,10 @@ async function loadState(){
   showView(state.view || 'home');
   render();
 }
-async function saveState(){
-  try{ await window.storage.set('ruleta-anime-state-v6', JSON.stringify(state)); }catch(e){ console.error(e); }
-}
 
+
+
+// ============ TEMA DE COLOR ============
 function applyTheme(t){ document.documentElement.setAttribute('data-theme', t); }
 function renderThemeRow(){
   const row = document.getElementById('themeRow');
@@ -184,6 +57,12 @@ function renderThemeRow(){
 
 function ntAvailableList(){ return NUEVAS_TEMP.filter(nt=>nt.finished && !state.seenNT.includes(nt.title)); }
 
+
+// ============ NAVEGACION ENTRE VISTAS ============
+// Solo hay 5 pantallas (home/anime/nt/ciclo/lista) y se muestran/ocultan
+// con la clase .hidden -- no hay routing de verdad, es una sola pagina.
+// fadeToView() hace un fundido antes de cambiar (se usa al confirmar una
+// eleccion, para que se sienta como que "se guarda y vuelve").
 async function fadeToView(name){
   const wrap = document.querySelector('.wrap');
   wrap.style.transition = 'opacity .45s';
@@ -220,6 +99,14 @@ document.getElementById('animeGoCicloBtn').addEventListener('click', ()=>{
 document.getElementById('animeGoNTBtn').addEventListener('click', ()=> showView('nt'));
 document.getElementById('animeGoListaBtn').addEventListener('click', ()=> showView('lista'));
 document.getElementById('backAnimeFromLista').addEventListener('click', ()=> showView('anime'));
+// Boton "Cartoon": accesible en cualquier momento (no solo cuando el ciclo
+// completo lo debe), reutiliza el mismo mini-flujo de sorteo de Adulto
+// (dado + revelar + confirmar/buscar de nuevo) pero con fromGate=false,
+// asi que NO reinicia el ciclo ni toca el mazo -- es un sorteo independiente.
+document.getElementById('animeGoCartoonBtn').addEventListener('click', ()=>{
+  showView('ciclo');
+  startDrawExtra('adulto', false);
+});
 
 function toast(msg){
   const t = document.createElement('div');
@@ -229,6 +116,8 @@ function toast(msg){
   setTimeout(()=>t.remove(), 1500);
 }
 
+
+// ============ PANTALLA ANIME: historial + botones ============
 function renderAnimeLanding(){
   const avail = ntAvailableList();
   document.getElementById('animeGoNTBtn').classList.toggle('hidden', avail.length===0);
@@ -262,6 +151,11 @@ function renderMiniHist(){
     </div>
   `).join('');
 }
+
+// ============ VER LISTA COMPLETA ============
+// Lista de todo MAIN_POOL no visto todavia. Tocar una fila elige ese
+// titulo directo (sin pasar por el mazo del ciclo -- por eso no consume
+// una ficha, solo se marca como usado y se agrega al historial).
 function renderListaCompleta(){
   const el = document.getElementById('listaList');
   const usedSet = new Set(state.usedTitles);
@@ -297,6 +191,10 @@ document.getElementById('undoLink').addEventListener('click', ()=>{
   renderAnimeLanding();
 });
 
+
+// ============ NUEVAS TEMPORADAS ============
+// Tarjetas de las series con temporada nueva ya terminada. Igual que Lista
+// Completa, elegir una no consume ficha del mazo -- es prioridad aparte.
 function renderNuevasTemp(){
   const grid = document.getElementById('ntGrid');
   const avail = ntAvailableList();
@@ -329,93 +227,14 @@ async function selectNuevaTemp(nt){
   await fadeToView('anime');
 }
 
-// ---------------- core draw logic ----------------
-function candidateTokens(){
-  let avail = state.deck.filter(t=>!t.used);
-  if(avail.length===0) return [];
-  let pool = avail;
-  let f1 = pool.filter(t=> !(state.lastEra && state.lastEra2 && state.lastEra===state.lastEra2 && t.era===state.lastEra));
-  if(f1.length>0) pool = f1;
-  return pool;
-}
-function resolveBand(token){
-  if(token.band) return token.band;
-  let band = weightedBandPick(CLASICA_W);
-  if(state.lastBand==='Elite' && band==='Elite'){
-    const w2total = CLASICA_W.Normal+CLASICA_W.Ligera || 1;
-    band = Math.random() < (CLASICA_W.Normal/w2total) ? 'Normal' : 'Ligera';
-  }
-  return band;
-}
-function pickTitleFor(token, band){
-  const usedSet = new Set(state.usedTitles);
-  let candidates = MAIN_POOL.filter(a => a.era===token.era && a.band===band && !usedSet.has(a.title));
-  const emoAllowed = state.emoCount < 3 && !state.lastEmo;
-  const wantEmo = emoAllowed ? (Math.random() < 0.20) : false;
-  let filtered = candidates.filter(a => a.emotional === wantEmo);
-  if(filtered.length>0) candidates = filtered;
-  if(candidates.length===0) candidates = MAIN_POOL.filter(a => a.era===token.era && !usedSet.has(a.title));
-  if(candidates.length===0) candidates = MAIN_POOL.filter(a => !usedSet.has(a.title));
-  if(candidates.length===0) return null;
-  return candidates[Math.floor(Math.random()*candidates.length)];
-}
-function finishDraw(token, band){
-  const title = pickTitleFor(token, band);
-  if(!title) return null;
-  return {token: {era:token.era, band}, title};
-}
-function drawNext(excludeEraBand){
-  let pool = candidateTokens();
-  if(excludeEraBand){
-    let f = pool.filter(t => !(t.era===excludeEraBand.era));
-    if(f.length>0) pool = f;
-  }
-  if(pool.length===0) return null;
-  const token = pool[Math.floor(Math.random()*pool.length)];
-  const band = resolveBand(token);
-  return finishDraw(token, band);
-}
-function snapshotForUndo(){
-  return JSON.parse(JSON.stringify({
-    deck: state.deck, usedTitles: state.usedTitles, history: state.history,
-    emoCount: state.emoCount, lastEra: state.lastEra, lastEra2: state.lastEra2,
-    lastBand: state.lastBand, lastEmo: state.lastEmo, owed: state.owed,
-    blocking: state.blocking, cycleNum: state.cycleNum
-  }));
-}
-function commitPick(pick){
-  state.lastAction = { type:'ciclo', snapshot: snapshotForUndo() };
-  const idx = state.deck.findIndex(t=>!t.used && t.era===pick.token.era && (t.band===pick.token.band || t.band===null));
-  if(idx>=0) state.deck[idx].used = true;
-  state.usedTitles.push(pick.title.title);
-  state.history.unshift({title:pick.title.title, era:pick.token.era, band:pick.token.band, emotional:pick.title.emotional});
-  if(pick.title.emotional) state.emoCount += 1;
-  state.lastEra2 = state.lastEra; state.lastEra = pick.token.era;
-  state.lastBand = pick.token.band; state.lastEmo = pick.title.emotional;
-  state.pendingPick = null;
-}
-function startNewCycle(){
-  state.deck = freshDeck(); state.emoCount = 0; state.cycleNum += 1;
-  state.lastEra = null; state.lastEra2 = null; state.lastBand = null; state.lastEmo = false;
-}
+// ---------------- core draw logic (ver logic.js) ----------------
 
-function poolFor(cat){ return cat==='adulto'?ADULTO_POOL : cat==='larga'?LARGA_POOL : REP_POOL; }
-function usedArrFor(cat){ return cat==='adulto'?state.adultoUsed : cat==='larga'?state.largaUsed : state.repUsed; }
-function drawExtra(cat){
-  const usedArr = usedArrFor(cat);
-  const usedSet = new Set(usedArr);
-  let avail = poolFor(cat).filter(a=>!usedSet.has(a.title));
-  if(avail.length===0){ avail = poolFor(cat); usedArr.length = 0; }
-  if(avail.length===0) return null;
-  return avail[Math.floor(Math.random()*avail.length)];
-}
-function commitExtra(cat, item){
-  usedArrFor(cat).push(item.title);
-  const label = cat==='adulto'?'Adulto':cat==='larga'?'Larga':'Repetición';
-  state.history.unshift({title:item.title, era:'Extra', band:label, emotional: !!item.emotional});
-  state.owed[cat] = false;
-}
 
+// ============ ANIMACION DEL DADO ============
+// Gira un dado 3D (rotaciones random en X/Y) durante ~1.9s antes de
+// revelar el resultado real. Es puramente decorativo -- el resultado ya
+// se calcula con drawNext()/drawExtra() de logic.js, el dado solo genera
+// la pausa dramatica.
 // ---------------- dice animation ----------------
 const DICE_PATTERNS = {
   1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8]
@@ -449,6 +268,10 @@ async function rollDice(durationMs){
   await wait(150);
 }
 
+
+// ============ REVELADO DE LA TARJETA ============
+// Muestra Era -> Tipo -> Nombre -> Plataforma en fundidos escalonados
+// (no todo de golpe), para que se sienta como una revelacion.
 function setupCardSkeleton(){
   document.getElementById('cardArea').innerHTML = `
     <div class="card-tags" id="rvTags"></div>
@@ -511,6 +334,10 @@ function disableAllActionButtons(disabled){
   document.querySelectorAll('.pill').forEach(p=> p.disabled = disabled);
 }
 
+
+// ============ FLUJO: SORTEO NORMAL DEL CICLO ============
+// Boton "Elegir siguiente": gira el dado, calcula el pick con drawNext(),
+// lo muestra, y deja los botones Confirmar/Buscar de nuevo listos.
 async function startDrawNormal(){
   disableAllActionButtons(true);
   document.getElementById('normalRow').classList.add('hidden');
@@ -558,6 +385,13 @@ document.getElementById('confirmBtn').addEventListener('click', async ()=>{
   await fadeToView('anime');
 });
 
+
+// ============ FLUJO: SORTEO EXTRA (Adulto/Larga/Repetir) ============
+// Mismo patron que el sorteo normal pero usando drawExtra() de logic.js.
+// `fromGate` distingue si esto se disparo porque el ciclo se completo
+// (ahi si puede reiniciar el ciclo al confirmar) o porque el usuario lo
+// pidio voluntariamente via boton Cartoon o un pill pendiente (ahi NO
+// toca el ciclo para nada).
 async function startDrawExtra(cat, fromGate){
   disableAllActionButtons(true);
   state.extra = {category: cat, fromGate: !!fromGate};
@@ -620,6 +454,11 @@ document.getElementById('continueExtraBtn').addEventListener('click', ()=>{
   saveState(); render();
 });
 
+
+// ============ PILLS DE OBLIGACIONES PENDIENTES ============
+// Si el usuario eligio "Mejor continuar ciclo" en vez de resolver Adulto/
+// Larga/Repetir cuando tocaba, queda pendiente y aparece como boton
+// flotante hasta que se resuelva.
 function renderPendingPills(){
   const row = document.getElementById('pendingRow');
   row.innerHTML = '';
@@ -641,6 +480,8 @@ function renderPendingPills(){
   }
 }
 
+
+// ============ RENDER GENERAL DE LA VISTA CICLO ============
 function render(){
   renderStats();
   renderPendingPills();
