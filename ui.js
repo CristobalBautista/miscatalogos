@@ -29,7 +29,12 @@ async function loadState(){
   await loadCatalog();
   try{
     const r = await window.storage.get('ruleta-anime-state-v6');
-    if(r && r.value){ state = JSON.parse(r.value); if(!state.seenNT) state.seenNT=[]; if(!state.theme) state.theme='dark-purple'; }
+    if(r && r.value){
+      state = JSON.parse(r.value);
+      if(!state.seenNT) state.seenNT=[];
+      if(!state.theme || !THEMES.includes(state.theme)) state.theme='dark-purple';
+      if(state.devMode===undefined) state.devMode=false;
+    }
     else { state = seedInitialState(); await saveState(); }
   }catch(e){ state = seedInitialState(); }
   applyTheme(state.theme);
@@ -88,6 +93,9 @@ function showView(name){
 document.getElementById('goAnime').addEventListener('click', ()=> showView('anime'));
 document.getElementById('goLive').addEventListener('click', ()=> toast('Próximamente'));
 document.getElementById('goMovies').addEventListener('click', ()=> toast('Próximamente'));
+// CARTOON (Cartoon Mañana): boton deshabilitado por ahora -- la data va a
+// venir de una tabla/CSV separada de catalogo.csv, todavia no existe.
+document.getElementById('goCartoon').addEventListener('click', ()=> toast('Próximamente'));
 document.getElementById('backHomeFromAnime').addEventListener('click', ()=> showView('home'));
 document.getElementById('backAnimeFromNT').addEventListener('click', ()=> showView('anime'));
 document.getElementById('backAnimeFromCiclo').addEventListener('click', ()=> showView('anime'));
@@ -99,13 +107,24 @@ document.getElementById('animeGoCicloBtn').addEventListener('click', ()=>{
 document.getElementById('animeGoNTBtn').addEventListener('click', ()=> showView('nt'));
 document.getElementById('animeGoListaBtn').addEventListener('click', ()=> showView('lista'));
 document.getElementById('backAnimeFromLista').addEventListener('click', ()=> showView('anime'));
-// Boton "Cartoon": accesible en cualquier momento (no solo cuando el ciclo
-// completo lo debe), reutiliza el mismo mini-flujo de sorteo de Adulto
-// (dado + revelar + confirmar/buscar de nuevo) pero con fromGate=false,
-// asi que NO reinicia el ciclo ni toca el mazo -- es un sorteo independiente.
-document.getElementById('animeGoCartoonBtn').addEventListener('click', ()=>{
-  showView('ciclo');
-  startDrawExtra('adulto', false);
+// Nota: el viejo boton "Cartoon" de ANIME (que en realidad disparaba el
+// sorteo de Cartoon Adulto por error) se quito. Cartoon Adulto sigue
+// accesible como siempre via el gate de fin de ciclo y el pill "¿Ahora si
+// Adulta?" -- no se perdio ningun acceso, solo el atajo mal etiquetado.
+
+
+// ============ CONFIGURACION (modal + Modo Desarrollador) ============
+document.getElementById('openConfig').addEventListener('click', ()=>{
+  document.getElementById('devModeToggle').checked = !!state.devMode;
+  document.getElementById('configModal').classList.remove('hidden');
+});
+document.getElementById('closeConfig').addEventListener('click', ()=>{
+  document.getElementById('configModal').classList.add('hidden');
+});
+document.getElementById('devModeToggle').addEventListener('change', (e)=>{
+  state.devMode = e.target.checked;
+  saveState();
+  renderDevPanel();
 });
 
 function toast(msg){
@@ -481,12 +500,63 @@ function renderPendingPills(){
 }
 
 
+// ============ MODO DESARROLLADOR: cuadritos de cupos del ciclo ============
+// Dibuja 2 bloques usando el mazo real (state.deck), asi que si algun dia
+// cambia RECIPE en logic.js esto se actualiza solo, sin tocar nada aca:
+// 1) Cupos por Era (10 Dorada / 6 Moderna / 2 Clasica), coloreado con el
+//    color de cada era, se apaga el cuadrito cuando esa ficha ya se uso.
+// 2) Cupos por Tipo (Elite/Normal/Ligera) dentro de Dorada y Moderna segun
+//    RECIPE (4-4-2 y 2-3-1). Clasica no tiene tipo fijo (se sortea al usarse),
+//    por eso sus 2 cuadritos van en un color neutro, sin sesgar a ningun tipo.
+function renderDevPanel(){
+  const panel = document.getElementById('devPanel');
+  if(!state.devMode){ panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  const block = document.getElementById('devEraBlock');
+
+  function tokensFor(era, band){
+    return state.deck.filter(t => t.era===era && (band===null ? t.band===null : t.band===band));
+  }
+  function sqHtml(tokens, colorVar){
+    return tokens.map(t => `<div class="dev-sq${t.used?' off':''}" style="background:var(${colorVar})"></div>`).join('');
+  }
+
+  let html = '<div class="dev-panel-title" style="margin-bottom:8px;">Por Era</div>';
+  html += ERA_ORDER.map(era => {
+    const tokens = state.deck.filter(t => t.era===era);
+    return `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS[era]||era}</div>
+      <div class="dev-sq-group">${sqHtml(tokens, '--'+era.toLowerCase())}</div></div>`;
+  }).join('');
+
+  html += '<div class="dev-panel-title" style="margin:16px 0 8px;">Por Tipo (Elite / Normal / Ligera)</div>';
+  html += ['Dorada','Moderna'].map(era => {
+    const groups = BAND_ORDER.map(band => {
+      const colorVar = band==='Elite' ? '--band-elite' : band==='Normal' ? '--band-normal' : '--band-ligera';
+      return sqHtml(tokensFor(era, band), colorVar);
+    }).join('<span style="width:6px;display:inline-block;"></span>');
+    return `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS[era]||era}</div>
+      <div class="dev-sq-group">${groups}</div></div>`;
+  }).join('');
+  // Clasica: sin sub-reparto fijo -- 2 cuadritos neutros, sin sesgo de tipo.
+  html += `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS['Clasica']}</div>
+    <div class="dev-sq-group">${sqHtml(tokensFor('Clasica', null), '--dim')}</div></div>`;
+
+  html += `<div class="dev-band-legend">
+    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-elite)"></span>Elite</div>
+    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-normal)"></span>Normal</div>
+    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-ligera)"></span>Ligera</div>
+  </div>`;
+
+  block.innerHTML = html;
+}
+
 // ============ RENDER GENERAL DE LA VISTA CICLO ============
 function render(){
   renderStats();
   renderPendingPills();
   renderGateOrNormal();
   renderMiniHist();
+  renderDevPanel();
 }
 function renderStats(){
   document.getElementById('statPos').textContent = state.deck.filter(t=>t.used).length + '/' + state.deck.length;

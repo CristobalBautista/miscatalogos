@@ -10,8 +10,8 @@ const BAND_ORDER = ['Elite','Normal','Ligera'];
 const ERA_ORDER = ['Dorada','Moderna','Clasica'];
 const ERA_LABELS = { Dorada:'Era Dorada', Moderna:'Era Moderna', Clasica:'Era Clásica' };
 const REP_EVERY = 3;
-const THEMES = ['dark-purple','mal-blue','trakt-red','gold-black','light'];
-const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'mal-blue':'#3f7fe0', 'trakt-red':'#ed1c24', 'gold-black':'#f5c518', 'light':'#5b4fd1' };
+const THEMES = ['dark-purple','light'];
+const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'light':'#5b4fd1' };
 
 let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
 
@@ -184,7 +184,8 @@ function seedInitialState(){
     extra: null,
     lastAction: null,
     theme: 'dark-purple',
-    view: 'home'
+    view: 'home',
+    devMode: false
   };
 }
 
