@@ -10,8 +10,8 @@ const BAND_ORDER = ['Elite','Normal','Ligera'];
 const ERA_ORDER = ['Dorada','Moderna','Clasica'];
 const ERA_LABELS = { Dorada:'Era Dorada', Moderna:'Era Moderna', Clasica:'Era Clásica' };
 const REP_EVERY = 3;
-const THEMES = ['dark-purple','mal-blue','trakt-red','gold-black','light'];
-const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'mal-blue':'#3f7fe0', 'trakt-red':'#ed1c24', 'gold-black':'#f5c518', 'light':'#5b4fd1' };
+const THEMES = ['dark-purple','light'];
+const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'light':'#5b4fd1' };
 
 let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
 
@@ -73,6 +73,19 @@ function isAvailable(plat){
 function detectPlatformKeys(plat){
   const p = (plat||'').toLowerCase();
   return Object.keys(PLATFORM_ICONS).filter(k => p.includes(k));
+}
+
+// La columna Plataforma a veces trae comentarios pegados ademas del nombre
+// de la plataforma (ej. "Crunchyroll (Stay no)", "Netflix 1 2 Crunchyroll
+// mas de 3"). Esta funcion quita los nombres de plataforma conocidos y
+// devuelve lo que sobra (limpio de parentesis/espacios extra), para no
+// perder esa aclaracion al mostrar la tarjeta.
+function platformExtraNote(plat){
+  if(!plat) return '';
+  let txt = plat;
+  Object.keys(PLATFORM_ICONS).forEach(k => { txt = txt.replace(new RegExp(k, 'gi'), ''); });
+  txt = txt.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
+  return txt;
 }
 
 // Descarga un CSV y lo convierte a un array de objetos {columna: valor} usando
@@ -184,7 +197,9 @@ function seedInitialState(){
     extra: null,
     lastAction: null,
     theme: 'dark-purple',
-    view: 'home'
+    view: 'home',
+    devMode: false,
+    listaCols: 2
   };
 }
 
