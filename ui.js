@@ -34,6 +34,7 @@ async function loadState(){
       if(!state.seenNT) state.seenNT=[];
       if(!state.theme || !THEMES.includes(state.theme)) state.theme='dark-purple';
       if(state.devMode===undefined) state.devMode=false;
+      if(!state.listaCols) state.listaCols=2;
     }
     else { state = seedInitialState(); await saveState(); }
   }catch(e){ state = seedInitialState(); }
@@ -121,6 +122,11 @@ document.getElementById('openConfig').addEventListener('click', ()=>{
 document.getElementById('closeConfig').addEventListener('click', ()=>{
   document.getElementById('configModal').classList.add('hidden');
 });
+// Cerrar tambien tocando el fondo oscuro (fuera de modal-box) -- solo si el
+// click fue directo sobre el overlay, no sobre algo adentro de la caja.
+document.getElementById('configModal').addEventListener('click', (e)=>{
+  if(e.target.id === 'configModal') document.getElementById('configModal').classList.add('hidden');
+});
 document.getElementById('devModeToggle').addEventListener('change', (e)=>{
   state.devMode = e.target.checked;
   saveState();
@@ -143,18 +149,26 @@ function renderAnimeLanding(){
   renderHistoryTable();
   document.getElementById('undoLink').classList.toggle('hidden', !state.lastAction);
 }
+// Quita el prefijo "Era " de ERA_LABELS solo para esta tabla -- la columna
+// ya se llama "Era", repetirlo en cada fila es redundante (ej. "Dorada" en
+// vez de "Era Dorada"). El resto de la app (tag de revelado, panel dev)
+// sigue usando ERA_LABELS completo tal cual, sin tocar.
+function eraShortLabel(era){
+  return (ERA_LABELS[era]||era).replace(/^Era\s+/i, '');
+}
 function renderHistoryTable(){
   const body = document.getElementById('histBody');
   if(state.history.length===0){
-    body.innerHTML = `<tr><td colspan="4" style="color:var(--dim); text-align:center; padding:16px 6px;">Nada elegido aún</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--dim); text-align:center; padding:18px 6px;">Nada elegido aún</td></tr>`;
     return;
   }
   body.innerHTML = state.history.map((h,i) => `
     <tr class="${i===0?'latest':''}">
-      <td><span class="dot ${h.era}"></span>${esc(ERA_LABELS[h.era]||h.era)}</td>
-      <td>${esc(h.band||'')}</td>
+      <td class="col-img"><div class="hist-thumb">🎬</div></td>
       <td class="name-cell">${esc(h.title)}</td>
-      <td>${h.emotional ? '<span style="color:var(--emo);">♥</span>' : ''}</td>
+      <td><span class="era-cell"><span class="dot ${h.era}"></span>${esc(eraShortLabel(h.era))}</span></td>
+      <td>${esc(h.band||'')}</td>
+      <td class="col-emo">${h.emotional ? '<span style="color:var(--emo);">♥</span>' : ''}</td>
     </tr>
   `).join('');
 }
@@ -172,29 +186,55 @@ function renderMiniHist(){
 }
 
 // ============ VER LISTA COMPLETA ============
-// Lista de todo MAIN_POOL no visto todavia. Tocar una fila elige ese
-// titulo directo (sin pasar por el mazo del ciclo -- por eso no consume
-// una ficha, solo se marca como usado y se agrega al historial).
+// Grilla de tarjetas (estilo MyAnimeList / Nuevas Temporadas) de todo
+// MAIN_POOL no visto todavia. Tocar una tarjeta elige ese titulo directo
+// (sin pasar por el mazo del ciclo -- por eso no consume una ficha, solo se
+// marca como usado y se agrega al historial). El numero de columnas (2 o 3)
+// se guarda en state.listaCols para que quede la preferencia.
 function renderListaCompleta(){
-  const el = document.getElementById('listaList');
+  const grid = document.getElementById('listaGrid');
+  document.getElementById('listaCols2Btn').classList.toggle('active', state.listaCols !== 3);
+  document.getElementById('listaCols3Btn').classList.toggle('active', state.listaCols === 3);
+  grid.classList.toggle('cols-3', state.listaCols === 3);
+
   const usedSet = new Set(state.usedTitles);
   const items = MAIN_POOL.filter(a=>!usedSet.has(a.title)).slice().sort((a,b)=> a.title.localeCompare(b.title));
-  if(items.length===0){ el.innerHTML = '<div style="padding:20px; text-align:center; color:var(--dim);">Sin títulos pendientes.</div>'; return; }
-  el.innerHTML = items.map(a => `
-    <button class="lista-row" data-title="${esc(a.title)}">
-      <span class="lista-era-dot" style="background:var(--${a.era.toLowerCase()})"></span>
-      <span class="lista-name">${esc(a.title)}</span>
-      <span class="lista-meta">${esc(ERA_LABELS[a.era]||a.era)} · ${a.eps} eps</span>
-      <span class="lista-plat">${platformChipsHtml(a.plataforma)}</span>
-    </button>
-  `).join('');
-  el.querySelectorAll('.lista-row').forEach(row=>{
-    row.addEventListener('click', ()=>{
-      const item = MAIN_POOL.find(a=>a.title===row.dataset.title);
+  if(items.length===0){
+    grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:var(--dim);">Sin títulos pendientes.</div>';
+    return;
+  }
+  grid.innerHTML = items.map(a => {
+    // La columna Plataforma a veces trae comentarios pegados (ej. "(Stay
+    // no)", "1 2 mas de 3") ademas del nombre de la plataforma -- no se
+    // omiten, se muestran como nota chica debajo de los chips.
+    const note = platformExtraNote(a.plataforma);
+    return `
+    <button class="lista-card" data-title="${esc(a.title)}">
+      <div class="lista-poster">
+        <span class="lista-era-badge" style="background:var(--${a.era.toLowerCase()})"></span>
+        🎬
+      </div>
+      <div class="lista-card-body">
+        <div class="lista-card-title">${esc(a.title)}</div>
+        <div class="lista-card-meta">${a.eps} eps</div>
+        <div class="lista-card-plat">${platformChipsHtml(a.plataforma)}</div>
+        ${note ? `<span class="lista-card-note">${esc(note)}</span>` : ''}
+      </div>
+    </button>`;
+  }).join('');
+  grid.querySelectorAll('.lista-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const item = MAIN_POOL.find(a=>a.title===card.dataset.title);
       if(item) selectFromLista(item);
     });
   });
 }
+document.getElementById('listaCols2Btn').addEventListener('click', ()=>{
+  state.listaCols = 2; saveState(); renderListaCompleta();
+});
+document.getElementById('listaCols3Btn').addEventListener('click', ()=>{
+  state.listaCols = 3; saveState(); renderListaCompleta();
+});
 async function selectFromLista(item){
   state.lastAction = { type:'lista', snapshot: JSON.parse(JSON.stringify({ history: state.history, usedTitles: state.usedTitles })) };
   state.usedTitles.push(item.title);
