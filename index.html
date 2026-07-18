@@ -116,12 +116,16 @@
 
     <div class="pending-row" id="pendingRow"></div>
 
-    <div class="dice-wrap" id="diceWrap">
-      <div class="dice" id="dice">
-        <div class="dice-face" id="diceFace"></div>
-      </div>
-      <div class="dice-label">Girando…</div>
+    <div class="anim-style-row">
+      <label for="animStyleSelect" class="anim-style-label">Animación</label>
+      <select id="animStyleSelect" class="anim-style-select">
+        <option value="cards">🎴 Tarjetas girando</option>
+        <option value="wheel">🎡 Ruleta</option>
+        <option value="slots">🎰 Tragamonedas</option>
+      </select>
     </div>
+
+    <div class="dice-wrap" id="diceWrap"></div>
 
     <div class="card" id="cardArea">
       <div class="card-empty">Presiona "Elegir siguiente" para empezar</div>
