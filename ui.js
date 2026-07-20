@@ -616,6 +616,46 @@ function renderDevPanel(){
   block.innerHTML = html;
 }
 
+// ============ PROTOTIPOS DE FILTRO "QUIERO VER" (solo Modo Desarrollador) ============
+// 4 formas visuales distintas del mismo filtro (Era / Calidad / Genero-stub),
+// para decidir cual usar antes de conectarlo al sorteo de verdad. Por ahora
+// ES SOLO VISUAL: tocar un boton/dropdown/radio cambia su propio estado
+// visual (activo/inactivo), pero no filtra nada todavia -- eso se conecta
+// despues de elegir la forma ganadora.
+function renderFilterProto(){
+  const panel = document.getElementById('filterProtoPanel');
+  panel.classList.toggle('hidden', !state.devMode);
+}
+document.getElementById('fpFormSelect').addEventListener('change', (e)=>{
+  ['buttons','dropdowns','radios','drawer'].forEach(f=>{
+    document.getElementById('fpForm-'+f).classList.toggle('hidden', f!==e.target.value);
+  });
+});
+// Botones (formas 1 y 4): toggle visual. era/calidad = 1 sola activa por
+// grupo (excluyentes); genero = multi-select (cada pill independiente).
+document.querySelectorAll('.fp-pill').forEach(pill=>{
+  pill.addEventListener('click', ()=>{
+    const group = pill.dataset.group;
+    if(group.startsWith('genero')){
+      pill.classList.toggle('active');
+    } else {
+      const siblings = document.querySelectorAll(`.fp-pill[data-group="${group}"]`);
+      const wasActive = pill.classList.contains('active');
+      siblings.forEach(s=> s.classList.remove('active'));
+      if(!wasActive) pill.classList.add('active');
+    }
+  });
+});
+document.getElementById('fpDrawerToggle').addEventListener('click', ()=>{
+  const drawerPanel = document.getElementById('fpDrawerPanel');
+  const isHidden = drawerPanel.classList.contains('hidden');
+  drawerPanel.classList.toggle('hidden');
+  document.getElementById('fpDrawerToggle').textContent = isHidden ? 'QUIERO VER ▾' : 'QUIERO VER ▸';
+});
+document.getElementById('fpDemoNoResults').addEventListener('click', ()=>{
+  document.getElementById('fpNoResultsMsg').classList.toggle('hidden');
+});
+
 // ============ RENDER GENERAL DE LA VISTA CICLO ============
 function render(){
   renderStats();
@@ -623,6 +663,7 @@ function render(){
   renderGateOrNormal();
   renderMiniHist();
   renderDevPanel();
+  renderFilterProto();
 }
 function renderStats(){
   document.getElementById('statPos').textContent = state.deck.filter(t=>t.used).length + '/' + state.deck.length;

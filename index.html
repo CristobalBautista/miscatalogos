@@ -114,6 +114,122 @@
       <div class="dev-era-block" id="devEraBlock"></div>
     </div>
 
+    <div id="filterProtoPanel" class="dev-panel hidden">
+      <div class="dev-panel-title">🛠 Modo Desarrollador — prototipos de filtro "Quiero ver"</div>
+      <div class="fp-switcher-row">
+        <label for="fpFormSelect" class="anim-style-label">Forma</label>
+        <select id="fpFormSelect" class="anim-style-select">
+          <option value="buttons">1. Botones</option>
+          <option value="dropdowns">2. Dropdowns</option>
+          <option value="radios">3. Radio buttons</option>
+          <option value="drawer">4. Panel "Quiero ver"</option>
+        </select>
+      </div>
+
+      <!-- FORMA 1: BOTONES -->
+      <div id="fpForm-buttons" class="fp-form">
+        <div class="fp-group-label">Era</div>
+        <div class="fp-pill-row">
+          <button class="fp-pill" data-group="era" data-value="Moderna">Nuevo</button>
+          <button class="fp-pill" data-group="era" data-value="Clasica">Clásico</button>
+        </div>
+        <div class="fp-group-label">Calidad</div>
+        <div class="fp-pill-row">
+          <button class="fp-pill" data-group="calidad" data-value="Elite">Bueno</button>
+          <button class="fp-pill" data-group="calidad" data-value="Normal">Normal</button>
+          <button class="fp-pill" data-group="calidad" data-value="Ligera">Relax</button>
+        </div>
+        <div class="fp-group-label">Género <span class="fp-stub-tag">(no funcional aún)</span></div>
+        <div class="fp-pill-row">
+          <button class="fp-pill" data-group="genero" data-value="Accion">Acción</button>
+          <button class="fp-pill" data-group="genero" data-value="Comedia">Comedia</button>
+          <button class="fp-pill" data-group="genero" data-value="Drama">Drama</button>
+          <button class="fp-pill" data-group="genero" data-value="Romance">Romance</button>
+          <button class="fp-pill" data-group="genero" data-value="Suspenso">Suspenso</button>
+        </div>
+      </div>
+
+      <!-- FORMA 2: DROPDOWNS -->
+      <div id="fpForm-dropdowns" class="fp-form hidden">
+        <div class="fp-dropdown-row">
+          <select class="fp-select">
+            <option value="">Era: cualquiera</option>
+            <option value="Moderna">Nuevo</option>
+            <option value="Clasica">Clásico</option>
+          </select>
+          <select class="fp-select">
+            <option value="">Calidad: cualquiera</option>
+            <option value="Elite">Bueno</option>
+            <option value="Normal">Normal</option>
+            <option value="Ligera">Relax</option>
+          </select>
+          <select class="fp-select">
+            <option value="">Género: cualquiera</option>
+            <option value="Accion">Acción</option>
+            <option value="Comedia">Comedia</option>
+            <option value="Drama">Drama</option>
+            <option value="Romance">Romance</option>
+            <option value="Suspenso">Suspenso</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- FORMA 3: RADIO BUTTONS -->
+      <div id="fpForm-radios" class="fp-form hidden">
+        <div class="fp-radio-col">
+          <div class="fp-group-label">Era</div>
+          <label class="fp-radio-opt"><input type="radio" name="fpEra" value="" checked> Cualquiera</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpEra" value="Moderna"> Nuevo</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpEra" value="Clasica"> Clásico</label>
+        </div>
+        <div class="fp-radio-col">
+          <div class="fp-group-label">Calidad</div>
+          <label class="fp-radio-opt"><input type="radio" name="fpCalidad" value="" checked> Cualquiera</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpCalidad" value="Elite"> Bueno</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpCalidad" value="Normal"> Normal</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpCalidad" value="Ligera"> Relax</label>
+        </div>
+        <div class="fp-radio-col">
+          <div class="fp-group-label">Género <span class="fp-stub-tag">(no funcional)</span></div>
+          <label class="fp-radio-opt"><input type="radio" name="fpGenero" value="" checked> Cualquiera</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpGenero" value="Accion"> Acción</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpGenero" value="Comedia"> Comedia</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpGenero" value="Drama"> Drama</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpGenero" value="Romance"> Romance</label>
+          <label class="fp-radio-opt"><input type="radio" name="fpGenero" value="Suspenso"> Suspenso</label>
+        </div>
+      </div>
+
+      <!-- FORMA 4: PANEL DESPLEGABLE "QUIERO VER" (a la derecha) -->
+      <div id="fpForm-drawer" class="fp-form hidden">
+        <button class="fp-drawer-toggle" id="fpDrawerToggle">QUIERO VER ▸</button>
+        <div class="fp-drawer-panel hidden" id="fpDrawerPanel">
+          <div class="fp-group-label">Era</div>
+          <div class="fp-pill-row">
+            <button class="fp-pill" data-group="era2" data-value="Moderna">Nuevo</button>
+            <button class="fp-pill" data-group="era2" data-value="Clasica">Clásico</button>
+          </div>
+          <div class="fp-group-label">Calidad</div>
+          <div class="fp-pill-row">
+            <button class="fp-pill" data-group="calidad2" data-value="Elite">Bueno</button>
+            <button class="fp-pill" data-group="calidad2" data-value="Normal">Normal</button>
+            <button class="fp-pill" data-group="calidad2" data-value="Ligera">Relax</button>
+          </div>
+          <div class="fp-group-label">Género <span class="fp-stub-tag">(no funcional)</span></div>
+          <div class="fp-pill-row">
+            <button class="fp-pill" data-group="genero2" data-value="Accion">Acción</button>
+            <button class="fp-pill" data-group="genero2" data-value="Comedia">Comedia</button>
+            <button class="fp-pill" data-group="genero2" data-value="Drama">Drama</button>
+            <button class="fp-pill" data-group="genero2" data-value="Romance">Romance</button>
+            <button class="fp-pill" data-group="genero2" data-value="Suspenso">Suspenso</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="fp-demo-btn" id="fpDemoNoResults">👁 Ver mensaje "sin resultados"</button>
+      <div id="fpNoResultsMsg" class="fp-no-results hidden">😕 No hay animes disponibles con esta combinación de filtros.</div>
+    </div>
+
     <div class="pending-row" id="pendingRow"></div>
 
     <div class="anim-style-row">
