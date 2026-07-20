@@ -98,13 +98,38 @@ h1{font-family:'Space Grotesk','Inter',sans-serif;font-size:22px;font-weight:700
 .lista-grid.cols-3 .lista-card-meta,.lista-grid.cols-3 .lista-card-note{font-size:9px;}
 .lista-grid.cols-3 .lista-card-body{padding:7px 8px 9px;}
 
-.dice-wrap{display:none;flex-direction:column;align-items:center;justify-content:center;padding:26px 0;min-height:170px;perspective:600px;}
-.dice{width:64px;height:64px;position:relative;transform-style:preserve-3d;transition:transform .15s linear;}
-.dice-face{width:64px;height:64px;background:var(--panel2);border:2px solid var(--line);border-radius:16px;
-  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:10px;
-  position:absolute;inset:0;backface-visibility:hidden;}
-.dice-pip{width:9px;height:9px;border-radius:50%;background:var(--accent);opacity:0;justify-self:center;align-self:center;}
-.dice-label{margin-top:14px;color:var(--dim);font-size:12px;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;}
+.anim-style-row{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:10px;}
+.anim-style-label{font-size:11px;color:var(--dim);font-weight:600;}
+.anim-style-select{font-family:inherit;font-size:12px;font-weight:700;color:var(--text);background:var(--panel);
+  border:1px solid var(--line);border-radius:100px;padding:6px 12px;cursor:pointer;}
+
+.dice-wrap{display:none;flex-direction:column;align-items:center;justify-content:center;padding:22px 0;min-height:170px;}
+.reveal-label{margin-top:16px;color:var(--dim);font-size:12px;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;}
+
+/* ---- Estilo 1: Tarjetas girando ---- */
+.anim-cards{position:relative;width:190px;height:112px;perspective:700px;}
+.anim-card{position:absolute;top:4px;width:72px;height:104px;border-radius:11px;
+  background:linear-gradient(155deg,var(--panel2),var(--line));border:2px solid var(--line);
+  box-shadow:0 8px 18px rgba(0,0,0,0.28);}
+.anim-card.c1{left:12px; animation:cardSpin .55s linear infinite;}
+.anim-card.c2{left:58px; z-index:2; animation:cardSpin .42s linear infinite reverse;}
+.anim-card.c3{left:104px; animation:cardSpin .63s linear infinite;}
+@keyframes cardSpin{from{transform:rotateY(0deg);}to{transform:rotateY(360deg);}}
+
+/* ---- Estilo 2: Ruleta (rueda con segmentos de color) ---- */
+.anim-wheel-wrap{position:relative;width:136px;height:136px;}
+.anim-wheel-pointer{position:absolute;top:-9px;left:50%;transform:translateX(-50%);width:0;height:0;
+  border-left:9px solid transparent;border-right:9px solid transparent;border-top:15px solid var(--text);z-index:2;}
+.anim-wheel{width:136px;height:136px;border-radius:50%;border:3px solid var(--line);
+  box-shadow:0 10px 24px rgba(0,0,0,0.3); transition:transform 2.4s cubic-bezier(.15,.85,.32,1);}
+.anim-wheel-hub{position:absolute;top:50%;left:50%;width:26px;height:26px;border-radius:50%;
+  background:var(--panel);border:2px solid var(--line);transform:translate(-50%,-50%);}
+
+/* ---- Estilo 3: Tragamonedas ---- */
+.anim-slot{width:70px;height:96px;border-radius:12px;overflow:hidden;border:2px solid var(--line);
+  background:var(--panel2);position:relative;box-shadow:inset 0 8px 14px rgba(0,0,0,0.25), inset 0 -8px 14px rgba(0,0,0,0.25);}
+.anim-slot-strip{display:flex;flex-direction:column;position:absolute;left:0;top:0;width:100%;}
+.anim-slot-cell{width:70px;height:96px;display:flex;align-items:center;justify-content:center;font-size:30px;}
 .hist-table-wrap{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
 .hist-table{width:100%;table-layout:fixed;border-collapse:collapse;}
 .hist-table th{font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--dim);text-align:left;
@@ -223,3 +248,38 @@ button:disabled{opacity:0.35; cursor:default;}
   flex-wrap:wrap;}
 .dev-legend-item{display:flex; align-items:center; gap:5px; font-size:10.5px; color:var(--dim);}
 .dev-legend-dot{width:9px; height:9px; border-radius:3px; flex-shrink:0;}
+
+/* ============ PROTOTIPOS DE FILTRO "QUIERO VER" (solo Modo Desarrollador) ============ */
+.fp-switcher-row{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:14px;}
+.fp-form{margin-bottom:4px;}
+.fp-group-label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--dim);
+  font-weight:700;margin:10px 0 6px;}
+.fp-group-label:first-child{margin-top:0;}
+.fp-stub-tag{text-transform:none;letter-spacing:0;font-weight:500;color:var(--dim);opacity:0.7;}
+.fp-pill-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:2px;}
+.fp-pill{font-size:11.5px;font-weight:700;padding:8px 14px;border-radius:100px;background:var(--panel2);
+  color:var(--dim);border:1px solid var(--line);cursor:pointer;}
+.fp-pill.active{background:rgba(185,142,232,0.16);color:var(--accent);border-color:var(--accent);}
+[data-theme="light"] .fp-pill.active{background:color-mix(in srgb, var(--accent) 14%, transparent);}
+.fp-pill:active{transform:scale(0.95);}
+
+.fp-dropdown-row{display:flex;flex-direction:column;gap:8px;}
+.fp-select{width:100%;font-family:inherit;font-size:13px;font-weight:600;color:var(--text);
+  background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;}
+
+.fp-radio-col{margin-bottom:14px;}
+.fp-radio-col:last-child{margin-bottom:0;}
+.fp-radio-opt{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--text);
+  padding:5px 2px;cursor:pointer;}
+.fp-radio-opt input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer;}
+
+.fp-drawer-toggle{width:100%;text-align:right;background:var(--panel2);border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;
+  color:var(--text);letter-spacing:0.04em;cursor:pointer;}
+.fp-drawer-panel{margin-top:10px;background:var(--panel2);border:1px solid var(--line);border-radius:14px;
+  padding:14px;}
+
+.fp-demo-btn{width:100%;margin-top:14px;background:transparent;border:1px dashed var(--line);color:var(--dim);
+  font-size:11.5px;font-weight:700;padding:10px;border-radius:10px;cursor:pointer;}
+.fp-no-results{margin-top:10px;text-align:center;font-size:12.5px;color:var(--dim);background:var(--panel2);
+  border:1px solid var(--line);border-radius:12px;padding:16px;}

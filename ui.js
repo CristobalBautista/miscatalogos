@@ -35,6 +35,7 @@ async function loadState(){
       if(!state.theme || !THEMES.includes(state.theme)) state.theme='dark-purple';
       if(state.devMode===undefined) state.devMode=false;
       if(!state.listaCols) state.listaCols=2;
+      if(!state.animStyle) state.animStyle='cards';
     }
     else { state = seedInitialState(); await saveState(); }
   }catch(e){ state = seedInitialState(); }
@@ -88,7 +89,10 @@ function showView(name){
   if(name==='anime') renderAnimeLanding();
   if(name==='nt') renderNuevasTemp();
   if(name==='lista') renderListaCompleta();
-  if(name==='ciclo') render();
+  if(name==='ciclo'){
+    document.getElementById('animStyleSelect').value = state.animStyle || 'cards';
+    render();
+  }
   saveState();
 }
 document.getElementById('goAnime').addEventListener('click', ()=> showView('anime'));
@@ -294,38 +298,66 @@ async function selectNuevaTemp(nt){
 // revelar el resultado real. Es puramente decorativo -- el resultado ya
 // se calcula con drawNext()/drawExtra() de logic.js, el dado solo genera
 // la pausa dramatica.
-// ---------------- dice animation ----------------
-const DICE_PATTERNS = {
-  1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8]
-};
-function buildDiceFace(){
-  const face = document.getElementById('diceFace');
-  face.innerHTML = '';
-  for(let i=0;i<9;i++){
-    const pip = document.createElement('div'); pip.className='dice-pip'; pip.dataset.i=i;
-    face.appendChild(pip);
+// ---------------- animacion de revelado (3 estilos, elegibles por dropdown) ----------------
+// Reemplaza el dado 3D viejo (no gustaba visualmente). Los 3 estilos comparten
+// el mismo contrato: playRevealAnimation() muestra #diceWrap, anima, y lo
+// vuelve a ocultar -- exactamente como antes hacia rollDice(), asi que los 2
+// call sites (startDrawNormal / startDrawExtra) no necesitan tocarse mas que
+// el nombre de la funcion.
+function buildRevealHTML(style){
+  if(style === 'wheel'){
+    // Segmentos proporcionales a las 3 eras reales del catalogo (Dorada ~52%,
+    // Moderna ~30%, Clasica ~11%) -- puramente decorativo, el resultado real
+    // ya esta decidido antes de que la rueda gire.
+    return `<div class="anim-wheel-wrap">
+      <div class="anim-wheel-pointer"></div>
+      <div class="anim-wheel" id="animWheel" style="background:conic-gradient(var(--dorada) 0% 52%, var(--moderna) 52% 82%, var(--clasica) 82% 100%); transform:rotate(0deg);"></div>
+      <div class="anim-wheel-hub"></div>
+    </div>`;
   }
-}
-function setDiceValue(n){
-  const pips = document.querySelectorAll('.dice-pip');
-  const on = new Set(DICE_PATTERNS[n]||[]);
-  pips.forEach((p,i)=> p.style.opacity = on.has(i) ? '1' : '0');
-}
-async function rollDice(durationMs){
-  buildDiceFace();
-  const dice = document.getElementById('dice');
-  const tickMs = 150;
-  const ticks = Math.max(1, Math.floor(durationMs/tickMs));
-  for(let i=0;i<ticks;i++){
-    const rx = Math.floor(Math.random()*4)*90;
-    const ry = Math.floor(Math.random()*4)*90;
-    dice.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`;
-    setDiceValue(1+Math.floor(Math.random()*6));
-    await wait(tickMs);
+  if(style === 'slots'){
+    const icons = ['🎬','⭐','🎴','🎬','⭐','🎴','🎬','⭐'];
+    return `<div class="anim-slot"><div class="anim-slot-strip" id="animSlotStrip" style="transform:translateY(0px);">
+      ${icons.map(i=>`<div class="anim-slot-cell">${i}</div>`).join('')}
+    </div></div>`;
   }
-  dice.style.transform = 'rotateX(360deg) rotateY(360deg)';
-  await wait(150);
+  // 'cards' (default)
+  return `<div class="anim-cards">
+    <div class="anim-card c1"></div>
+    <div class="anim-card c2"></div>
+    <div class="anim-card c3"></div>
+  </div>`;
 }
+async function playRevealAnimation(){
+  const wrap = document.getElementById('diceWrap');
+  const style = state.animStyle || 'cards';
+  wrap.innerHTML = buildRevealHTML(style) + '<div class="reveal-label">Girando…</div>';
+  wrap.style.display = 'flex';
+  // pequeña espera para que el navegador registre el estado inicial (0deg /
+  // 0px) antes de animar -- si no, a veces la transicion no dispara.
+  await wait(30);
+  if(style === 'wheel'){
+    const wheel = document.getElementById('animWheel');
+    const spins = 4 + Math.floor(Math.random()*3); // 4 a 6 vueltas completas
+    const finalDeg = spins*360 + Math.floor(Math.random()*360);
+    wheel.style.transform = `rotate(${finalDeg}deg)`;
+    await wait(2500); // que decelere y se note -- "que no se quite tan rapido"
+  } else if(style === 'slots'){
+    const strip = document.getElementById('animSlotStrip');
+    strip.style.transition = 'transform 1.8s cubic-bezier(.15,.85,.32,1)';
+    strip.style.transform = `translateY(-630px)`; // 7 celdas de 90px, aterriza en la 8va
+    await wait(1900);
+  } else {
+    await wait(1900);
+    document.querySelectorAll('.anim-card').forEach(c=> c.style.animation='none');
+  }
+  await wait(300); // pausa visible antes de desaparecer, mismo motivo que arriba
+  wrap.style.display = 'none';
+}
+document.getElementById('animStyleSelect').addEventListener('change', (e)=>{
+  state.animStyle = e.target.value;
+  saveState();
+});
 
 
 // ============ REVELADO DE LA TARJETA ============
@@ -404,10 +436,7 @@ async function startDrawNormal(){
   document.getElementById('gateBox').classList.add('hidden');
   const cardArea = document.getElementById('cardArea');
   cardArea.style.opacity = '0';
-  const wrap = document.getElementById('diceWrap');
-  wrap.style.display = 'flex';
-  await rollDice(1900);
-  wrap.style.display = 'none';
+  await playRevealAnimation();
   cardArea.style.opacity = '1';
 
   let result = drawNext(null);
@@ -461,10 +490,7 @@ async function startDrawExtra(cat, fromGate){
   document.getElementById('continueExtraRow').classList.add('hidden');
   const cardArea = document.getElementById('cardArea');
   cardArea.style.opacity = '0';
-  const wrap = document.getElementById('diceWrap');
-  wrap.style.display = 'flex';
-  await rollDice(1900);
-  wrap.style.display = 'none';
+  await playRevealAnimation();
   cardArea.style.opacity = '1';
 
   const item = drawExtra(cat);
@@ -590,6 +616,46 @@ function renderDevPanel(){
   block.innerHTML = html;
 }
 
+// ============ PROTOTIPOS DE FILTRO "QUIERO VER" (solo Modo Desarrollador) ============
+// 4 formas visuales distintas del mismo filtro (Era / Calidad / Genero-stub),
+// para decidir cual usar antes de conectarlo al sorteo de verdad. Por ahora
+// ES SOLO VISUAL: tocar un boton/dropdown/radio cambia su propio estado
+// visual (activo/inactivo), pero no filtra nada todavia -- eso se conecta
+// despues de elegir la forma ganadora.
+function renderFilterProto(){
+  const panel = document.getElementById('filterProtoPanel');
+  panel.classList.toggle('hidden', !state.devMode);
+}
+document.getElementById('fpFormSelect').addEventListener('change', (e)=>{
+  ['buttons','dropdowns','radios','drawer'].forEach(f=>{
+    document.getElementById('fpForm-'+f).classList.toggle('hidden', f!==e.target.value);
+  });
+});
+// Botones (formas 1 y 4): toggle visual. era/calidad = 1 sola activa por
+// grupo (excluyentes); genero = multi-select (cada pill independiente).
+document.querySelectorAll('.fp-pill').forEach(pill=>{
+  pill.addEventListener('click', ()=>{
+    const group = pill.dataset.group;
+    if(group.startsWith('genero')){
+      pill.classList.toggle('active');
+    } else {
+      const siblings = document.querySelectorAll(`.fp-pill[data-group="${group}"]`);
+      const wasActive = pill.classList.contains('active');
+      siblings.forEach(s=> s.classList.remove('active'));
+      if(!wasActive) pill.classList.add('active');
+    }
+  });
+});
+document.getElementById('fpDrawerToggle').addEventListener('click', ()=>{
+  const drawerPanel = document.getElementById('fpDrawerPanel');
+  const isHidden = drawerPanel.classList.contains('hidden');
+  drawerPanel.classList.toggle('hidden');
+  document.getElementById('fpDrawerToggle').textContent = isHidden ? 'QUIERO VER ▾' : 'QUIERO VER ▸';
+});
+document.getElementById('fpDemoNoResults').addEventListener('click', ()=>{
+  document.getElementById('fpNoResultsMsg').classList.toggle('hidden');
+});
+
 // ============ RENDER GENERAL DE LA VISTA CICLO ============
 function render(){
   renderStats();
@@ -597,6 +663,7 @@ function render(){
   renderGateOrNormal();
   renderMiniHist();
   renderDevPanel();
+  renderFilterProto();
 }
 function renderStats(){
   document.getElementById('statPos').textContent = state.deck.filter(t=>t.used).length + '/' + state.deck.length;

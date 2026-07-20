@@ -199,7 +199,8 @@ function seedInitialState(){
     theme: 'dark-purple',
     view: 'home',
     devMode: false,
-    listaCols: 2
+    listaCols: 2,
+    animStyle: 'cards'
   };
 }
 
