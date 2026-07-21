@@ -15,32 +15,67 @@ const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'light':'#5b4fd1' };
 
 let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
 
-// ── Reparto fijo del ciclo (NO se recalcula desde el CSV) ──────────────────
-// Estos numeros vienen del analisis original del catalogo completo y quedan
-// fijos a proposito: si se recalculan en vivo cada vez que el CSV cambia
-// (por ejemplo al filtrar "Pendiente Nueva Temporada"), los redondeos se
-// mueven y Dorada puede terminar con 3 Ligera en vez de 2 -- eso ya paso y
-// fue un bug confuso. Fijar los numeros evita esa sorpresa.
-const RECIPE = {
-  Dorada:  { Elite:4, Normal:4, Ligera:2 },  // 10 slots
-  Moderna: { Elite:2, Normal:3, Ligera:1 },  // 6 slots
-};
-// Clasica NO tiene sub-reparto fijo: en vez de pre-cargar 2 casillas con
-// banda ya decidida, cada vez que le toca el turno a Clasica se hace un
-// sorteo ponderado usando estas proporciones reales (42% Elite / 40% Normal
-// / 18% Ligera). Asi nunca queda una banda estructuralmente excluida solo
-// porque 2 slots no alcanzan para redondear un porcentaje chico a 1 entero.
-//
-// OJO -- el proposito real de toda esta rotacion (Elite/Normal/Ligera y las
-// reglas de abajo) NO es que las matematicas salgan exactas al decimal. Es
-// simplemente: no repetir mucho de lo mismo, y tener "Ligera" disponible
-// para descansar de carga emocional o series pesadas. Por eso, aunque en la
-// practica el sorteo de Clasica termine dando un poco mas de Normal/Ligera
-// que el 42/40/18 exacto (por la regla de "nunca Elite tras Elite" de mas
-// abajo, que le hace esquivar Elite seguido), NO hace falta perseguir el
-// numero exacto -- cumple el proposito igual. Si el dia de mañana cambia la
-// logica general del ciclo, este es un buen lugar para revisar primero.
-const CLASICA_W = { Elite:0.4222, Normal:0.40, Ligera:0.1778 };
+// ── Tamaño del mazo: FIJO en 24, desacoplado de Largas ─────────────────────
+// Antes se penso en derivarlo de total/Largas, pero eso hacia que el tamaño
+// saltara de 19 a 31 solo con agregar o ver algunas Largas -- y ya probamos
+// (simulacion) que el tamaño le importa mucho al comportamiento (18 mal, 24
+// bien, de ahi para arriba empeora otra vez). Por eso queda fijo, se cambia
+// a mano si algun dia se decide explicitamente.
+const MAZO_SIZE = 24;
+
+// ── Reparto por resto mayor: proporcional a los datos REALES del CSV, no a
+// numeros fijos a mano. Reemplaza al viejo RECIPE hardcodeado. ─────────────
+// Ejemplo: si hay que repartir 24 slots entre Dorada/Moderna/Clasica segun
+// sus proporciones reales, esto reparte los enteros de piso y le da los
+// "sobrantes" (el resto) a quien tenga la fraccion mas alta -- asi ningun
+// slot se pierde por redondeo y nadie queda sesgado.
+function largestRemainder(counts, totalSlots){
+  const grand = Object.values(counts).reduce((a,b)=>a+b, 0);
+  const floors = {}; Object.keys(counts).forEach(k=> floors[k]=0);
+  if(grand===0 || totalSlots===0) return floors;
+  const raw = {}; Object.keys(counts).forEach(k=> raw[k] = (counts[k]/grand)*totalSlots);
+  Object.keys(raw).forEach(k=> floors[k]=Math.floor(raw[k]));
+  let rem = totalSlots - Object.values(floors).reduce((a,b)=>a+b, 0);
+  const order = Object.keys(raw).sort((a,b)=> (raw[b]-floors[b]) - (raw[a]-floors[a]));
+  for(let i=0;i<rem;i++){ floors[order[i%order.length]]++; }
+  return floors;
+}
+
+// Cuenta cuantos titulos disponibles hay por Era, y por Banda dentro de cada
+// Era -- leido en vivo de MAIN_POOL (ya cargado del CSV). Esto reemplaza los
+// porcentajes fijos de antes: si agregas o quitas series del catalogo, la
+// proxima vez que se arme un mazo esto ya refleja el cambio solo.
+function computeCatalogStats(){
+  const eraCounts = {Dorada:0, Moderna:0, Clasica:0};
+  const bandCountsByEra = {
+    Dorada:{Elite:0,Normal:0,Ligera:0},
+    Moderna:{Elite:0,Normal:0,Ligera:0},
+    Clasica:{Elite:0,Normal:0,Ligera:0},
+  };
+  MAIN_POOL.forEach(a=>{
+    if(eraCounts[a.era]===undefined) return;
+    eraCounts[a.era]++;
+    bandCountsByEra[a.era][a.band]++;
+  });
+  return {eraCounts, bandCountsByEra};
+}
+
+// Arma la cuota de UN mazo de MAZO_SIZE: primero reparte los slots totales
+// entre las 3 Eras (proporcional real), y dentro de Dorada/Moderna reparte
+// esos slots entre Elite/Normal/Ligera (tambien proporcional real, mismo
+// metodo que ya usaba el RECIPE original pero con numeros vivos). Clasica
+// NO se subdivide aca -- tiene tan pocos slots por mazo que un cupo fijo por
+// tipo la sesgaria (podria tocarle 0 a alguna banda). Su tipo real se decide
+// aparte, en la bolsa caliente (ver freshClasicaBag).
+function buildMazoQuota(){
+  const {eraCounts, bandCountsByEra} = computeCatalogStats();
+  const eraQuota = largestRemainder(eraCounts, MAZO_SIZE);
+  const quota = { Clasica: eraQuota.Clasica || 0 };
+  for(const era of ['Dorada','Moderna']){
+    quota[era] = largestRemainder(bandCountsByEra[era], eraQuota[era] || 0);
+  }
+  return quota;
+}
 
 const PLATFORM_ICONS = { netflix:'netflix', crunchyroll:'crunchyroll', prime:'primevideo', disney:'disneyplus', max:'max' };
 const PLATFORM_EMOJI = { netflix:'🔴', crunchyroll:'🟠', prime:'🔵', disney:'⭐', max:'🟣' };
@@ -139,30 +174,46 @@ async function loadCatalog(){
   MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep;
 }
 
-// Arma la "bolsa" de 18 fichas de un ciclo nuevo: 10 Dorada + 6 Moderna con banda
-// YA FIJA segun RECIPE, mas 2 Clasica con banda en null (se decide al momento de
-// usarla, ver resolveBand). Se llama al arrancar la app y cada vez que se cierra
-// un ciclo completo.
+// Arma la "bolsa" de un mazo nuevo (MAZO_SIZE fichas): Dorada y Moderna con
+// banda YA FIJA segun la cuota real del momento (buildMazoQuota), mas las
+// fichas de Clasica que le toquen a este mazo, con banda en null -- su tipo
+// real se decide en resolveBand(), tirando de la bolsa caliente aparte.
 function freshDeck(){
+  const quota = buildMazoQuota();
   const deck = [];
   for(const era of ['Dorada','Moderna']){
     for(const band of BAND_ORDER){
-      const n = RECIPE[era][band];
+      const n = quota[era][band] || 0;
       for(let i=0;i<n;i++) deck.push({era, band, used:false});
     }
   }
-  for(let i=0;i<2;i++) deck.push({era:'Clasica', band:null, used:false});
+  for(let i=0;i<(quota.Clasica||0);i++) deck.push({era:'Clasica', band:null, used:false});
   return deck;
 }
 
-// Sorteo ponderado simple: recibe pesos {Elite,Normal,Ligera} que suman 1 y
-// devuelve una banda al azar respetando esas proporciones. Se usa solo para
-// Clasica (Dorada/Moderna ya traen banda fija de freshDeck).
-function weightedBandPick(w){
-  const r = Math.random();
-  if(r < w.Elite) return 'Elite';
-  if(r < w.Elite+w.Normal) return 'Normal';
-  return 'Ligera';
+// ── Bolsa caliente de Clasica ───────────────────────────────────────────
+// Antes, cada vez que tocaba una ficha Clasica se tiraba un dado sin memoria
+// (42/40/18% siempre igual, sin importar que salio antes) -- eso significa
+// que Clasica, a diferencia de Dorada/Moderna, NO tenia garantia de terminar
+// en las proporciones reales, solo se acercaba en promedio. La bolsa
+// caliente arregla esto: es una bolsa aparte con TODOS los titulos Clasica
+// reales (ej. 19 Elite / 18 Normal / 8 Ligera), que se va vaciando de a una
+// cada vez que sale una Clasica -- igual que el mazo principal, pero a la
+// escala del catalogo Clasica completo (dura muchos mazos principales antes
+// de agotarse y rearmarse sola, porque Clasica es solo 2-3 fichas por mazo).
+function freshClasicaBag(){
+  const {bandCountsByEra} = computeCatalogStats();
+  const bag = [];
+  BAND_ORDER.forEach(band=>{
+    const n = bandCountsByEra.Clasica[band] || 0;
+    for(let i=0;i<n;i++) bag.push({band, used:false});
+  });
+  return bag;
+}
+function ensureClasicaBag(){
+  if(!state.clasicaBag || state.clasicaBag.length===0 || state.clasicaBag.every(t=>t.used)){
+    state.clasicaBag = freshClasicaBag();
+  }
 }
 
 // Estado inicial la primera vez que se abre la app en un dispositivo nuevo: ya
@@ -187,7 +238,9 @@ function seedInitialState(){
       {title:'7th Time Loop', era:'Moderna', band:'Normal', emotional:false},
       {title:'Assassination Classroom', era:'Dorada', band:'Elite', emotional:false}
     ],
-    emoCount: 2, lastEra:'Dorada', lastEra2:'Dorada', lastBand:'Ligera', lastEmo:false,
+    emoCount: 2, lastEra:'Dorada', lastEraStreak:1, lastBand:'Ligera', lastBandStreak:1, emoCooldown:0,
+    clasicaBag: freshClasicaBag(),
+    filters: { era:null, calidad:null, generos:[] },
     cycleNum: 1,
     pendingPick: null,
     largaUsed: [], adultoUsed: [], repUsed: [],
@@ -210,27 +263,58 @@ async function saveState(){
   try{ await window.storage.set('ruleta-anime-state-v6', JSON.stringify(state)); }catch(e){ console.error(e); }
 }
 
+// Candidatas validas para la proxima tirada del mazo principal. 2 capas:
+// 1) Filtros "Quiero ver" (Era/Calidad) si estan activos -- estos SON una
+//    eleccion explicita, asi que tienen prioridad y de paso saltan la regla
+//    de racha para ese eje (pedir "Dorada" a proposito cuando ya salio 2
+//    veces seguida es justamente para eso).
+// 2) Si no hay filtro en ese eje, aplica la regla de racha: permite 2 veces
+//    seguidas de la misma Era o el mismo Tipo, pero bloquea la 3ra -- salvo
+//    que ya no quede ninguna alternativa (la bolsa se queda sin opcion), en
+//    cuyo caso se cede y se permite igual, para que el mazo nunca se trabe.
+// Los tokens de Clasica (band:null) siempre pasan el filtro de Tipo aca --
+// su banda real todavia no se sabe, se resuelve despues en resolveBand().
 function candidateTokens(){
   let pool = state.deck.filter(t=>!t.used);
-  if(state.lastBand === 'Elite'){
-    const noElite = pool.filter(t => t.band !== 'Elite'); // Clasica (band:null) sigue disponible, se resuelve evitando Elite en resolveBand()
-    if(noElite.length>0) pool = noElite;
+  const filters = state.filters || {};
+
+  if(filters.era){
+    pool = pool.filter(t => t.era===filters.era);
+  } else if(state.lastEra && state.lastEraStreak>=2){
+    const alt = pool.filter(t => t.era!==state.lastEra);
+    if(alt.length>0) pool = alt;
   }
+
+  if(filters.calidad){
+    pool = pool.filter(t => t.band===filters.calidad || t.band===null);
+  } else if(state.lastBand && state.lastBandStreak>=2){
+    const alt = pool.filter(t => t.band!==state.lastBand || t.band===null);
+    if(alt.length>0) pool = alt;
+  }
+
   return pool;
 }
 
-// Devuelve la banda (Elite/Normal/Ligera) de una ficha. Si la ficha ya trae banda
-// fija (Dorada/Moderna), la devuelve tal cual. Si es Clasica (band=null), hace el
-// sorteo ponderado con CLASICA_W, y si el resultado es Elite justo despues de otro
-// Elite, vuelve a tirar (solo entre Normal/Ligera) para no romper la regla.
+// Devuelve la banda (Elite/Normal/Ligera) de una ficha. Si ya trae banda fija
+// (Dorada/Moderna) la devuelve tal cual. Si es Clasica (band=null), la saca
+// de la bolsa caliente (ver freshClasicaBag) -- respetando el filtro de
+// Calidad si esta activo, o si no la regla de racha (permite 2, bloquea 3ra),
+// igual que candidateTokens(). Es solo LECTURA: no marca nada usado todavia,
+// eso pasa recien en commitPick() cuando se confirma de verdad (asi "buscar
+// de nuevo" no gasta fichas de la bolsa por picks que se terminan descartando).
 function resolveBand(token){
   if(token.band) return token.band;
-  let band = weightedBandPick(CLASICA_W);
-  if(state.lastBand==='Elite' && band==='Elite'){
-    const w2total = CLASICA_W.Normal+CLASICA_W.Ligera || 1;
-    band = Math.random() < (CLASICA_W.Normal/w2total) ? 'Normal' : 'Ligera';
+  ensureClasicaBag();
+  let pool = state.clasicaBag.filter(t=>!t.used);
+  const filters = state.filters || {};
+  if(filters.calidad){
+    const forced = pool.filter(t => t.band===filters.calidad);
+    if(forced.length>0) pool = forced;
+  } else if(state.lastBand && state.lastBandStreak>=2){
+    const alt = pool.filter(t => t.band!==state.lastBand);
+    if(alt.length>0) pool = alt;
   }
-  return band;
+  return pool[Math.floor(Math.random()*pool.length)].band;
 }
 
 // Dado un token ya resuelto (era+banda), elige el titulo concreto:
@@ -239,11 +323,13 @@ function resolveBand(token){
 // 3) si no hay nada en esa banda, relaja banda (cualquiera de la era)
 // 4) si no hay nada en la era, relaja a cualquier titulo no visto
 // El "quiero emotional" se decide aca mismo: maximo 3 por ciclo (emoCount) y
-// nunca 2 seguidos (lastEmo), con ~20% de probabilidad cuando esta permitido.
+// cooldown DURO de 2 tiradas despues de cada Emotional (no solo evitar la
+// inmediata siguiente) -- si emoCooldown>0 no puede volver a salir Emotional
+// todavia. Cuando esta permitido, sale con ~20% de probabilidad.
 function pickTitleFor(token, band){
   const usedSet = new Set(state.usedTitles);
   let candidates = MAIN_POOL.filter(a => a.era===token.era && a.band===band && !usedSet.has(a.title));
-  const emoAllowed = state.emoCount < 3 && !state.lastEmo;
+  const emoAllowed = state.emoCount < 3 && state.emoCooldown <= 0;
   const wantEmo = emoAllowed ? (Math.random() < 0.20) : false;
   let filtered = candidates.filter(a => a.emotional === wantEmo);
   if(filtered.length>0) candidates = filtered;
@@ -262,15 +348,13 @@ function finishDraw(token, band){
 }
 
 // Sortea la proxima ficha del ciclo normal: elige un token al azar entre los
-// candidatos validos, le resuelve la banda, y le busca titulo. `excludeEraBand`
-// se usa solo para "Buscar de nuevo": evita repetir la misma era que se acaba
-// de mostrar (para que el reroll de verdad se sienta distinto).
-function drawNext(excludeEraBand){
+// candidatos validos (candidateTokens ya aplica filtros "Quiero ver" y las
+// reglas de racha), le resuelve la banda, y le busca titulo. "Buscar de
+// nuevo" llama a esto de nuevo tal cual -- ya NO tiene un bypass especial de
+// reglas; si se quiere forzar Era/Tipo a proposito, es via los filtros, no
+// tocando 2 veces el boton.
+function drawNext(){
   let pool = candidateTokens();
-  if(excludeEraBand){
-    let f = pool.filter(t => !(t.era===excludeEraBand.era));
-    if(f.length>0) pool = f;
-  }
   if(pool.length===0) return null;
   const token = pool[Math.floor(Math.random()*pool.length)];
   const band = resolveBand(token);
@@ -282,32 +366,48 @@ function drawNext(excludeEraBand){
 function snapshotForUndo(){
   return JSON.parse(JSON.stringify({
     deck: state.deck, usedTitles: state.usedTitles, history: state.history,
-    emoCount: state.emoCount, lastEra: state.lastEra, lastEra2: state.lastEra2,
-    lastBand: state.lastBand, lastEmo: state.lastEmo, owed: state.owed,
+    emoCount: state.emoCount, emoCooldown: state.emoCooldown,
+    lastEra: state.lastEra, lastEraStreak: state.lastEraStreak,
+    lastBand: state.lastBand, lastBandStreak: state.lastBandStreak,
+    clasicaBag: state.clasicaBag, owed: state.owed,
     blocking: state.blocking, cycleNum: state.cycleNum
   }));
 }
 
-// Confirma un pick del ciclo normal: marca la ficha del mazo como usada, agrega
-// el titulo a usedTitles (para que no vuelva a salir sorteado) y al historial,
-// y actualiza los "ultimos" (lastEra/lastBand/lastEmo) que usan las reglas.
+// Confirma un pick del ciclo normal: marca la ficha del mazo como usada (y si
+// era Clasica, tambien descuenta la banda real de la bolsa caliente), agrega
+// el titulo a usedTitles y al historial, y actualiza los contadores de racha
+// (lastEra/lastEraStreak, lastBand/lastBandStreak) y el cooldown de Emotional
+// que usan las reglas en la proxima tirada.
 function commitPick(pick){
   state.lastAction = { type:'ciclo', snapshot: snapshotForUndo() };
   const idx = state.deck.findIndex(t=>!t.used && t.era===pick.token.era && (t.band===pick.token.band || t.band===null));
   if(idx>=0) state.deck[idx].used = true;
+  if(pick.token.era === 'Clasica'){
+    ensureClasicaBag();
+    const bagIdx = state.clasicaBag.findIndex(t=>!t.used && t.band===pick.token.band);
+    if(bagIdx>=0) state.clasicaBag[bagIdx].used = true;
+  }
   state.usedTitles.push(pick.title.title);
   state.history.unshift({title:pick.title.title, era:pick.token.era, band:pick.token.band, emotional:pick.title.emotional});
   if(pick.title.emotional) state.emoCount += 1;
-  state.lastEra2 = state.lastEra; state.lastEra = pick.token.era;
-  state.lastBand = pick.token.band; state.lastEmo = pick.title.emotional;
+  state.lastEraStreak = (pick.token.era===state.lastEra) ? state.lastEraStreak+1 : 1;
+  state.lastBandStreak = (pick.token.band===state.lastBand) ? state.lastBandStreak+1 : 1;
+  state.lastEra = pick.token.era;
+  state.lastBand = pick.token.band;
+  state.emoCooldown = pick.title.emotional ? 2 : Math.max(0, state.emoCooldown-1);
   state.pendingPick = null;
 }
 
-// Arranca un ciclo nuevo: mazo fresco de 18 fichas, contador de Emotional en 0,
-// y limpia los "ultimos" para que las reglas no arrastren nada del ciclo anterior.
+// Arranca un mazo nuevo (MAZO_SIZE fichas con cupos reales recalculados),
+// contador de Emotional en 0, y limpia los "ultimos" para que las reglas de
+// racha no arrastren nada del mazo anterior. La bolsa caliente de Clasica NO
+// se toca aca -- vive aparte, dura muchos mazos principales.
 function startNewCycle(){
   state.deck = freshDeck(); state.emoCount = 0; state.cycleNum += 1;
-  state.lastEra = null; state.lastEra2 = null; state.lastBand = null; state.lastEmo = false;
+  state.lastEra = null; state.lastEraStreak = 0;
+  state.lastBand = null; state.lastBandStreak = 0;
+  state.emoCooldown = 0;
 }
 
 // Devuelve el pool de datos (array de titulos) segun la categoria extra pedida.
