@@ -14,6 +14,14 @@ const THEMES = ['dark-purple','light'];
 const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'light':'#5b4fd1' };
 
 let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
+// TODOS los titulos de Dorada/Moderna/Clasica del CSV, SIN filtrar por
+// disponibilidad ni PendienteTemporada -- se usa solo para calcular las
+// proporciones del mazo (que tan grande es cada Era/Tipo en el catalogo real
+// completo). MAIN_POOL sigue siendo el pool disponible AHORA, para elegir un
+// titulo concreto -- son 2 cosas distintas a proposito: la composicion del
+// mazo no debe moverse solo porque bajaste o viste algo (eso cambia
+// disponibilidad, no el catalogo real).
+let FULL_ERA_POOL = [];
 
 // ── Tamaño del mazo: FIJO en 24, desacoplado de Largas ─────────────────────
 // Antes se penso en derivarlo de total/Largas, pero eso hacia que el tamaño
@@ -52,7 +60,7 @@ function computeCatalogStats(){
     Moderna:{Elite:0,Normal:0,Ligera:0},
     Clasica:{Elite:0,Normal:0,Ligera:0},
   };
-  MAIN_POOL.forEach(a=>{
+  FULL_ERA_POOL.forEach(a=>{
     if(eraCounts[a.era]===undefined) return;
     eraCounts[a.era]++;
     bandCountsByEra[a.era][a.band]++;
@@ -146,15 +154,24 @@ async function loadCatalog(){
   })).filter(r=>r.title);
 
   const eraMap = { 'ERA DORADA':'Dorada', 'MODERNOS':'Moderna', 'CLASICOS':'Clasica' };
-  const main = [], largas = [], rep = [], adulto = [];
+  const main = [], largas = [], rep = [], adulto = [], fullEra = [];
 
   for(const r of catalogo){
     if(!r.Nombre) continue;
+    const cat = (r.Categoria||'').trim();
+
+    // FULL_ERA_POOL: cuenta SIEMPRE, sin importar disponibilidad ni
+    // temporada pendiente -- es el universo real para calcular proporciones.
+    if(cat in eraMap){
+      const ratingFull = parseFloat(r.Calificacion) || 0;
+      const bandFull = ratingFull>8.0 ? 'Elite' : (ratingFull>=7.5 ? 'Normal' : 'Ligera');
+      fullEra.push({ era:eraMap[cat], band:bandFull });
+    }
+
     const pend = (r.PendienteTemporada||'').trim();
     if(pend === 'X') continue; // temporada nueva en curso/pendiente -> prioridad aparte, no entra al sorteo
     const plat = (r.Plataforma||'').trim();
     if(!isAvailable(plat)) continue; // sin plataforma real (X o requiere Descargar) -> fuera del sorteo
-    const cat = (r.Categoria||'').trim();
     const eps = parseInt(r.Eps) || 0;
     const emotional = (r.Emotional||'').trim()==='X';
 
@@ -171,7 +188,7 @@ async function loadCatalog(){
     }
   }
 
-  MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep;
+  MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep; FULL_ERA_POOL = fullEra;
 }
 
 // Arma la "bolsa" de un mazo nuevo (MAZO_SIZE fichas): Dorada y Moderna con
