@@ -195,7 +195,7 @@ function renderMiniHist(){
   const el = document.getElementById('miniHist');
   if(!el) return;
   if(state.history.length===0){ el.innerHTML = '<div style="color:var(--dim); font-size:12.5px;">Nada elegido aún</div>'; return; }
-  el.innerHTML = state.history.map((h,i)=>`
+  el.innerHTML = state.history.slice(0,10).map((h,i)=>`
     <div class="mini-hist-item ${i===0?'latest':''}">
       <span class="mini-hist-dot ${h.era}"></span>
       <span class="mini-hist-title">${esc(h.title)}</span>
@@ -458,7 +458,16 @@ async function startDrawNormal(){
   if(!result){
     const filtros = state.filters || {};
     const hayFiltro = filtros.era || filtros.calidad;
-    toast(hayFiltro ? '😕 No hay animes con esa combinación en este mazo' : 'Sin candidatos, revisa el mazo');
+    // candidateTokens() ya intento el fallback fuera de mazo (busca en todo
+    // el catalogo disponible, no solo en las 24 fichas del mazo actual) --
+    // si igual llego vacio aca, es un "sin resultados" real, no solo que el
+    // mazo puntual no tenga esa combinacion.
+    toast(hayFiltro ? '😕 Sin resultados para esos filtros' : 'Sin candidatos, revisa el mazo');
+    // Limpiar la tarjeta: si quedaba un pick anterior visible (ej. veniamos
+    // de "Buscar de nuevo" con un filtro recien activado), no debe quedar
+    // pegado en pantalla dando a entender que sigue siendo el resultado.
+    document.getElementById('cardArea').innerHTML = '<div class="card-empty">Sin resultados para esos filtros</div>';
+    document.getElementById('confirmRow').classList.add('hidden');
     document.getElementById('normalRow').classList.remove('hidden');
     disableAllActionButtons(false);
     return;
@@ -703,7 +712,7 @@ function render(){
 }
 function renderStats(){
   document.getElementById('statPos').textContent = state.deck.filter(t=>t.used).length + '/' + state.deck.length;
-  document.getElementById('statEmo').textContent = state.emoCount + '/3';
+  document.getElementById('statEmo').textContent = state.emoCount + '/5';
   document.getElementById('statCycleN').textContent = state.cycleNum;
 }
 function renderGateOrNormal(){
