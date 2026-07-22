@@ -309,6 +309,25 @@ function candidateTokens(){
     if(alt.length>0) pool = alt;
   }
 
+  // Fallback fuera de mazo (bug 0/11): un filtro "Quiero ver" activo puede no
+  // tener NINGUNA ficha en el mazo actual de 24 aunque el catalogo si tenga
+  // titulos disponibles que cumplan -- el mazo es solo una muestra chica, no
+  // el universo completo. Antes esto devolvia vacio y la UI se quedaba
+  // mostrando el pick anterior sin avisar nada. Ahora, si el mazo no tiene
+  // nada, se arma un pool "suelto" directo desde MAIN_POOL (catalogo
+  // disponible real) respetando los mismos filtros. Estas fichas se marcan
+  // outOfDeck:true: al confirmarse NO gastan cupo del mazo ni de la bolsa
+  // caliente de Clasica (ver commitPick), porque no vinieron de ahi -- es
+  // una excepcion puntual pedida a proposito, no parte del reparto normal.
+  // Solo si esto TAMBIEN sale vacio es un "sin resultados" de verdad.
+  if(pool.length===0 && (filters.era || filters.calidad)){
+    const usedSet = new Set(state.usedTitles);
+    let extra = MAIN_POOL.filter(a => !usedSet.has(a.title));
+    if(filters.era) extra = extra.filter(a => a.era===filters.era);
+    if(filters.calidad) extra = extra.filter(a => a.band===filters.calidad);
+    pool = extra.map(a => ({era:a.era, band:a.band, used:false, outOfDeck:true}));
+  }
+
   return pool;
 }
 
@@ -361,7 +380,7 @@ function pickTitleFor(token, band){
 function finishDraw(token, band){
   const title = pickTitleFor(token, band);
   if(!title) return null;
-  return {token: {era:token.era, band}, title};
+  return {token: {era:token.era, band, outOfDeck: !!token.outOfDeck}, title};
 }
 
 // Sortea la proxima ficha del ciclo normal: elige un token al azar entre los
@@ -398,12 +417,18 @@ function snapshotForUndo(){
 // que usan las reglas en la proxima tirada.
 function commitPick(pick){
   state.lastAction = { type:'ciclo', snapshot: snapshotForUndo() };
-  const idx = state.deck.findIndex(t=>!t.used && t.era===pick.token.era && (t.band===pick.token.band || t.band===null));
-  if(idx>=0) state.deck[idx].used = true;
-  if(pick.token.era === 'Clasica'){
-    ensureClasicaBag();
-    const bagIdx = state.clasicaBag.findIndex(t=>!t.used && t.band===pick.token.band);
-    if(bagIdx>=0) state.clasicaBag[bagIdx].used = true;
+  // Los picks outOfDeck (fallback fuera de mazo, ver candidateTokens) no
+  // vinieron de una ficha real del mazo ni de la bolsa caliente -- fueron
+  // una excepcion puntual armada directo desde el catalogo. No hay ficha ni
+  // cupo que gastar, asi que se saltan ambos pasos a proposito.
+  if(!pick.token.outOfDeck){
+    const idx = state.deck.findIndex(t=>!t.used && t.era===pick.token.era && (t.band===pick.token.band || t.band===null));
+    if(idx>=0) state.deck[idx].used = true;
+    if(pick.token.era === 'Clasica'){
+      ensureClasicaBag();
+      const bagIdx = state.clasicaBag.findIndex(t=>!t.used && t.band===pick.token.band);
+      if(bagIdx>=0) state.clasicaBag[bagIdx].used = true;
+    }
   }
   state.usedTitles.push(pick.title.title);
   state.history.unshift({title:pick.title.title, era:pick.token.era, band:pick.token.band, emotional:pick.title.emotional});
