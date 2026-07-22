@@ -145,27 +145,44 @@ async function fetchCsv(path){
 // plataforma) y separa todo en los 4 pools que usa el resto de la app
 // (MAIN_POOL = Dorada+Moderna+Clasica, LARGA_POOL, ADULTO_POOL, REP_POOL).
 // Se llama una vez al abrir la app (ver loadState en ui.js).
+// URL del catalogo publicado desde Google Sheets (Archivo > Compartir >
+// Publicar en la web > CSV). nuevas_temporadas.csv sigue local por ahora,
+// todavia no migro a Sheets -- se hace aparte cuando toque.
+const CATALOGO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMKcfeHBpai6WyQKvI33TLIt5bU9dgVpAh0l-H6P8ZBdpXdlCfRnP--dxkpLbpA5mLwX8MHfjNrSoT/pub?gid=353737606&single=true&output=csv';
+
 async function loadCatalog(){
-  const [catalogo, nt] = await Promise.all([ fetchCsv('catalogo.csv'), fetchCsv('nuevas_temporadas.csv') ]);
+  const [catalogo, nt] = await Promise.all([ fetchCsv(CATALOGO_URL), fetchCsv('nuevas_temporadas.csv') ]);
 
   NUEVAS_TEMP = nt.map(r => ({
     title: r.Nombre, eps: r.Eps||'',
     finished: !!(r.FechaFinalizacion && r.FechaFinalizacion.trim() && r.FechaFinalizacion.trim()!=='N/A')
   })).filter(r=>r.title);
 
-  const eraMap = { 'ERA DORADA':'Dorada', 'MODERNOS':'Moderna', 'CLASICOS':'Clasica' };
+  // Categorias validas: el CSV/Sheet ya trae el valor final directo, no hay
+  // traduccion -- si "Categoria" dice "Moderna", la era ES "Moderna". Este
+  // set solo sirve para VALIDAR y avisar si aparece algo inesperado (ej. un
+  // typo nuevo en el Sheet), en vez de descartar la fila en silencio como
+  // pasaba antes con el diccionario viejo.
+  const ERA_SET = new Set(['Dorada','Moderna','Clasica']);
+  const OTHER_CATS = new Set(['Adulto','Larga','Repetir']);
   const main = [], largas = [], rep = [], adulto = [], fullEra = [];
+  const catsDesconocidas = new Set();
 
   for(const r of catalogo){
     if(!r.Nombre) continue;
     const cat = (r.Categoria||'').trim();
 
+    if(!ERA_SET.has(cat) && !OTHER_CATS.has(cat)){
+      catsDesconocidas.add(cat);
+      continue;
+    }
+
     // FULL_ERA_POOL: cuenta SIEMPRE, sin importar disponibilidad ni
     // temporada pendiente -- es el universo real para calcular proporciones.
-    if(cat in eraMap){
+    if(ERA_SET.has(cat)){
       const ratingFull = parseFloat(r.Calificacion) || 0;
       const bandFull = ratingFull>8.0 ? 'Elite' : (ratingFull>=7.5 ? 'Normal' : 'Ligera');
-      fullEra.push({ era:eraMap[cat], band:bandFull });
+      fullEra.push({ era:cat, band:bandFull });
     }
 
     const pend = (r.PendienteTemporada||'').trim();
@@ -175,17 +192,21 @@ async function loadCatalog(){
     const eps = parseInt(r.Eps) || 0;
     const emotional = (r.Emotional||'').trim()==='X';
 
-    if(cat in eraMap){
+    if(ERA_SET.has(cat)){
       const rating = parseFloat(r.Calificacion) || 0;
       const band = rating>8.0 ? 'Elite' : (rating>=7.5 ? 'Normal' : 'Ligera');
-      main.push({ title:r.Nombre, era:eraMap[cat], rating, eps, emotional, band, plataforma:plat });
-    } else if(cat === 'Largas'){
+      main.push({ title:r.Nombre, era:cat, rating, eps, emotional, band, plataforma:plat });
+    } else if(cat === 'Larga'){
       largas.push({ title:r.Nombre, eps, emotional, plataforma:plat });
-    } else if(cat === 'Repetir Mejores'){
+    } else if(cat === 'Repetir'){
       rep.push({ title:r.Nombre, eps, emotional, plataforma:plat });
-    } else if(cat === 'Adult Cartoon'){
+    } else if(cat === 'Adulto'){
       adulto.push({ title:r.Nombre, eps, emotional, plataforma:plat });
     }
+  }
+
+  if(catsDesconocidas.size>0){
+    console.warn('Categoria(s) desconocida(s) en el catalogo, filas ignoradas:', [...catsDesconocidas]);
   }
 
   MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep; FULL_ERA_POOL = fullEra;
@@ -358,15 +379,24 @@ function resolveBand(token){
 // 2) si no hay candidatos con ese filtro exacto, relaja emotional
 // 3) si no hay nada en esa banda, relaja banda (cualquiera de la era)
 // 4) si no hay nada en la era, relaja a cualquier titulo no visto
-// El "quiero emotional" se decide aca mismo: maximo 3 por ciclo (emoCount) y
-// cooldown DURO de 2 tiradas despues de cada Emotional (no solo evitar la
-// inmediata siguiente) -- si emoCooldown>0 no puede volver a salir Emotional
-// todavia. Cuando esta permitido, sale con ~20% de probabilidad.
+// El "quiero emotional" se decide aca mismo: entre EMO_MIN y EMO_MAX por
+// mazo (antes era un tope fijo de 3 con ~20% de probabilidad por tirada, lo
+// que en la practica daba mas cerca de 12.5% real porque el contador topaba
+// antes de que el 20% tuviera chance de expresarse en las 24 fichas del
+// mazo). Cooldown DURO de 2 tiradas despues de cada Emotional (no solo
+// evitar la inmediata siguiente). Si al mazo le quedan justo las fichas
+// necesarias para todavia llegar al minimo, se fuerza Emotional aunque el
+// cooldown normal lo bloquearia -- garantizar el piso de 3 pesa mas que la
+// regla de "no muy seguido".
+const EMO_MIN = 3, EMO_MAX = 5;
 function pickTitleFor(token, band){
   const usedSet = new Set(state.usedTitles);
   let candidates = MAIN_POOL.filter(a => a.era===token.era && a.band===band && !usedSet.has(a.title));
-  const emoAllowed = state.emoCount < 3 && state.emoCooldown <= 0;
-  const wantEmo = emoAllowed ? (Math.random() < 0.20) : false;
+  const remaining = state.deck.filter(t=>!t.used).length; // fichas que quedan en el mazo, incluyendo esta
+  const faltanParaMinimo = EMO_MIN - state.emoCount;
+  const emoForced = faltanParaMinimo > 0 && remaining <= faltanParaMinimo;
+  const emoAllowed = state.emoCount < EMO_MAX && (state.emoCooldown <= 0 || emoForced);
+  const wantEmo = emoAllowed ? (emoForced ? true : Math.random() < 0.20) : false;
   let filtered = candidates.filter(a => a.emotional === wantEmo);
   if(filtered.length>0) candidates = filtered;
   if(candidates.length===0) candidates = MAIN_POOL.filter(a => a.era===token.era && !usedSet.has(a.title));

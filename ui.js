@@ -712,7 +712,7 @@ function render(){
 }
 function renderStats(){
   document.getElementById('statPos').textContent = state.deck.filter(t=>t.used).length + '/' + state.deck.length;
-  document.getElementById('statEmo').textContent = state.emoCount + '/3';
+  document.getElementById('statEmo').textContent = state.emoCount + '/5';
   document.getElementById('statCycleN').textContent = state.cycleNum;
 }
 function renderGateOrNormal(){
