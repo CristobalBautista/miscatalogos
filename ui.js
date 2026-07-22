@@ -36,6 +36,21 @@ async function loadState(){
       if(state.devMode===undefined) state.devMode=false;
       if(!state.listaCols) state.listaCols=2;
       if(!state.animStyle) state.animStyle='cards';
+      // Migracion: el mazo paso de 18 fijo a 24 con cupos reales, y se sumo
+      // la bolsa caliente de Clasica + contadores de racha (antes solo
+      // existia para Elite). Si el estado guardado es de antes de esto, se
+      // arma un mazo nuevo -- sin perder historial ni usedTitles, solo se
+      // reinicia la "bolsa en curso", como si arrancara un mazo nuevo.
+      if(!state.clasicaBag || state.lastBandStreak===undefined){
+        state.deck = freshDeck();
+        state.clasicaBag = freshClasicaBag();
+        state.lastBandStreak = 0;
+        state.lastEraStreak = 0;
+        state.emoCooldown = 0;
+        delete state.lastEra2;
+        delete state.lastEmo;
+      }
+      if(!state.filters) state.filters = { era:null, calidad:null, generos:[] };
     }
     else { state = seedInitialState(); await saveState(); }
   }catch(e){ state = seedInitialState(); }
@@ -439,9 +454,11 @@ async function startDrawNormal(){
   await playRevealAnimation();
   cardArea.style.opacity = '1';
 
-  let result = drawNext(null);
+  let result = drawNext();
   if(!result){
-    toast('Sin candidatos, revisa el mazo');
+    const filtros = state.filters || {};
+    const hayFiltro = filtros.era || filtros.calidad;
+    toast(hayFiltro ? '😕 No hay animes con esa combinación en este mazo' : 'Sin candidatos, revisa el mazo');
     document.getElementById('normalRow').classList.remove('hidden');
     disableAllActionButtons(false);
     return;
@@ -566,14 +583,18 @@ function renderPendingPills(){
 }
 
 
-// ============ MODO DESARROLLADOR: cuadritos de cupos del ciclo ============
-// Dibuja 2 bloques usando el mazo real (state.deck), asi que si algun dia
-// cambia RECIPE en logic.js esto se actualiza solo, sin tocar nada aca:
-// 1) Cupos por Era (10 Dorada / 6 Moderna / 2 Clasica), coloreado con el
+// ============ MODO DESARROLLADOR: cuadritos de cupos del mazo ============
+// Dibuja usando el mazo real (state.deck) y la bolsa caliente de Clasica
+// (state.clasicaBag), asi que si cambia el catalogo esto se actualiza solo,
+// sin tocar nada aca:
+// 1) Cupos por Era (proporcional real sobre MAZO_SIZE=24), coloreado con el
 //    color de cada era, se apaga el cuadrito cuando esa ficha ya se uso.
-// 2) Cupos por Tipo (Elite/Normal/Ligera) dentro de Dorada y Moderna segun
-//    RECIPE (4-4-2 y 2-3-1). Clasica no tiene tipo fijo (se sortea al usarse),
-//    por eso sus 2 cuadritos van en un color neutro, sin sesgar a ningun tipo.
+// 2) Cupos por Tipo (Elite/Normal/Ligera) dentro de Dorada y Moderna, tambien
+//    proporcional real. Clasica no tiene tipo fijo POR MAZO (se resuelve al
+//    usarse, desde su bolsa caliente aparte), por eso sus cuadritos de este
+//    bloque van en un color neutro.
+// 3) Bolsa caliente de Clasica: cuantos Elite/Normal/Ligera reales quedan sin
+//    usar en la bolsa completa (dura muchos mazos, se ve aparte del mazo actual).
 function renderDevPanel(){
   const panel = document.getElementById('devPanel');
   if(!state.devMode){ panel.classList.add('hidden'); return; }
@@ -587,7 +608,7 @@ function renderDevPanel(){
     return tokens.map(t => `<div class="dev-sq${t.used?' off':''}" style="background:var(${colorVar})"></div>`).join('');
   }
 
-  let html = '<div class="dev-panel-title" style="margin-bottom:8px;">Por Era</div>';
+  let html = `<div class="dev-panel-title" style="margin-bottom:8px;">Por Era (mazo de ${state.deck.length})</div>`;
   html += ERA_ORDER.map(era => {
     const tokens = state.deck.filter(t => t.era===era);
     return `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS[era]||era}</div>
@@ -603,7 +624,7 @@ function renderDevPanel(){
     return `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS[era]||era}</div>
       <div class="dev-sq-group">${groups}</div></div>`;
   }).join('');
-  // Clasica: sin sub-reparto fijo -- 2 cuadritos neutros, sin sesgo de tipo.
+  // Clasica dentro del mazo actual: sin sub-reparto fijo -- cuadritos neutros.
   html += `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS['Clasica']}</div>
     <div class="dev-sq-group">${sqHtml(tokensFor('Clasica', null), '--dim')}</div></div>`;
 
@@ -613,47 +634,62 @@ function renderDevPanel(){
     <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-ligera)"></span>Ligera</div>
   </div>`;
 
+  // Bolsa caliente de Clasica: independiente del mazo, dura muchos mazos.
+  const bag = state.clasicaBag || [];
+  const bagLeft = band => bag.filter(t=>t.band===band && !t.used).length;
+  const bagTotal = band => bag.filter(t=>t.band===band).length;
+  html += `<div class="dev-panel-title" style="margin:16px 0 8px;">Bolsa caliente Clásica (independiente del mazo)</div>
+    <div class="dev-era-row"><div class="dev-era-label" style="width:auto;">Elite ${bagLeft('Elite')}/${bagTotal('Elite')} · Normal ${bagLeft('Normal')}/${bagTotal('Normal')} · Ligera ${bagLeft('Ligera')}/${bagTotal('Ligera')}</div></div>`;
+
   block.innerHTML = html;
 }
 
-// ============ PROTOTIPOS DE FILTRO "QUIERO VER" (solo Modo Desarrollador) ============
-// 4 formas visuales distintas del mismo filtro (Era / Calidad / Genero-stub),
-// para decidir cual usar antes de conectarlo al sorteo de verdad. Por ahora
-// ES SOLO VISUAL: tocar un boton/dropdown/radio cambia su propio estado
-// visual (activo/inactivo), pero no filtra nada todavia -- eso se conecta
-// despues de elegir la forma ganadora.
-function renderFilterProto(){
-  const panel = document.getElementById('filterProtoPanel');
+// ============ FILTRO "QUIERO VER" (conectado al sorteo de verdad) ============
+// Forma botones (la que eligio la esposa), con Dorada ya sumada a Era. Por
+// ahora el panel entero sigue detras de Modo Desarrollador -- la logica ya
+// esta conectada (candidateTokens/resolveBand en logic.js leen state.filters
+// de verdad), pero la exposicion a la esposa se habilita en otro paso.
+// Era/Calidad son excluyentes dentro de su grupo (elegis 1 o ninguna).
+// Genero queda como pills que se marcan pero no filtran nada (sin data
+// todavia). Elegir Era o Calidad ignora a proposito la regla de racha para
+// esa tirada puntual -- es pedir algo especifico, no el sorteo libre.
+function renderFilterPanel(){
+  const panel = document.getElementById('filterPanel');
   panel.classList.toggle('hidden', !state.devMode);
-}
-document.getElementById('fpFormSelect').addEventListener('change', (e)=>{
-  ['buttons','dropdowns','radios','drawer'].forEach(f=>{
-    document.getElementById('fpForm-'+f).classList.toggle('hidden', f!==e.target.value);
+  const filters = state.filters || {};
+  document.querySelectorAll('.fp-pill[data-group="era"]').forEach(p=>{
+    p.classList.toggle('active', filters.era === p.dataset.value);
   });
-});
-// Botones (formas 1 y 4): toggle visual. era/calidad = 1 sola activa por
-// grupo (excluyentes); genero = multi-select (cada pill independiente).
+  document.querySelectorAll('.fp-pill[data-group="calidad"]').forEach(p=>{
+    p.classList.toggle('active', filters.calidad === p.dataset.value);
+  });
+  document.querySelectorAll('.fp-pill[data-group="genero"]').forEach(p=>{
+    p.classList.toggle('active', (filters.generos||[]).includes(p.dataset.value));
+  });
+}
 document.querySelectorAll('.fp-pill').forEach(pill=>{
   pill.addEventListener('click', ()=>{
     const group = pill.dataset.group;
-    if(group.startsWith('genero')){
-      pill.classList.toggle('active');
+    const val = pill.dataset.value;
+    if(!state.filters) state.filters = { era:null, calidad:null, generos:[] };
+    if(group === 'genero'){
+      // multi-select stub: se marca visualmente, sin efecto en el sorteo
+      // todavia (no hay columna de Genero en el CSV).
+      const idx = state.filters.generos.indexOf(val);
+      if(idx>=0) state.filters.generos.splice(idx,1); else state.filters.generos.push(val);
     } else {
-      const siblings = document.querySelectorAll(`.fp-pill[data-group="${group}"]`);
-      const wasActive = pill.classList.contains('active');
-      siblings.forEach(s=> s.classList.remove('active'));
-      if(!wasActive) pill.classList.add('active');
+      // era/calidad: excluyente -- tocar la misma que ya estaba activa la apaga.
+      state.filters[group] = (state.filters[group] === val) ? null : val;
     }
+    saveState();
+    renderFilterPanel();
   });
 });
-document.getElementById('fpDrawerToggle').addEventListener('click', ()=>{
-  const drawerPanel = document.getElementById('fpDrawerPanel');
-  const isHidden = drawerPanel.classList.contains('hidden');
-  drawerPanel.classList.toggle('hidden');
-  document.getElementById('fpDrawerToggle').textContent = isHidden ? 'QUIERO VER ▾' : 'QUIERO VER ▸';
-});
-document.getElementById('fpDemoNoResults').addEventListener('click', ()=>{
-  document.getElementById('fpNoResultsMsg').classList.toggle('hidden');
+document.getElementById('qvToggle').addEventListener('click', ()=>{
+  const drawer = document.getElementById('qvDrawer');
+  const isHidden = drawer.classList.contains('hidden');
+  drawer.classList.toggle('hidden');
+  document.getElementById('qvToggle').textContent = isHidden ? 'QUIERO VER ▾' : 'QUIERO VER ▸';
 });
 
 // ============ RENDER GENERAL DE LA VISTA CICLO ============
@@ -663,7 +699,7 @@ function render(){
   renderGateOrNormal();
   renderMiniHist();
   renderDevPanel();
-  renderFilterProto();
+  renderFilterPanel();
 }
 function renderStats(){
   document.getElementById('statPos').textContent = state.deck.filter(t=>t.used).length + '/' + state.deck.length;
