@@ -39,7 +39,7 @@ function doPost(e) {
 
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][colNombre]).trim() === nombre) {
-        sheet.getRange(i + 1, colVisto + 1).setValue('Y');
+        sheet.getRange(i + 1, colVisto + 1).setValue(true);
         return respond({ ok: true, fila: i + 1, nombre: nombre });
       }
     }
