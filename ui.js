@@ -227,11 +227,17 @@ function renderListaCompleta(){
     // no)", "1 2 mas de 3") ademas del nombre de la plataforma -- no se
     // omiten, se muestran como nota chica debajo de los chips.
     const note = platformExtraNote(a.plataforma);
+    // Solo hay imagen si ya paso por el batch de enriquecimiento (columna
+    // SmallPoster llena). Mientras tanto, se muestra el emoji de siempre --
+    // asi no rompe nada para los titulos que aun no tienen MAL_ID cargado.
+    const posterHtml = a.poster
+      ? `<img src="${esc(a.poster)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🎬'}))">`
+      : '🎬';
     return `
     <button class="lista-card" data-title="${esc(a.title)}">
       <div class="lista-poster">
         <span class="lista-era-badge" style="background:var(--${a.era.toLowerCase()})"></span>
-        🎬
+        ${posterHtml}
       </div>
       <div class="lista-card-body">
         <div class="lista-card-title">${esc(a.title)}</div>
