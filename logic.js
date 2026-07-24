@@ -509,3 +509,26 @@ function commitExtra(cat, item){
   state.history.unshift({title:item.title, era:'Extra', band:label, emotional: !!item.emotional});
   state.owed[cat] = false;
 }
+
+// ============ ESCRITURA REMOTA: marcar "Visto" en el Sheet ============
+// Le avisa al Apps Script (Web App) que un titulo se confirmo, para que
+// marque Visto=Y en la fila correspondiente. Fire-and-forget a proposito:
+// si falla (sin internet, URL vieja, etc) NO debe trabar la app ni el
+// flujo normal -- el estado local (state.usedTitles / window.storage) ya
+// es la fuente de verdad para que el sorteo no repita, esto es solo para
+// que el Sheet quede reflejado. Reintentar o avisar visualmente si falla
+// es un pendiente aparte, no bloquea el uso hoy.
+
+const VISTO_WRITE_URL = 'https://script.google.com/macros/s/AKfycbw_JGiDEns52YWhIo5_whitg4sXEA3p2JyBvC8sDvJ9mXSaUWZ72tbTD3C1m1PaY0JnkA/exec';
+
+async function markVistoRemote(title){
+  try{
+    await fetch(VISTO_WRITE_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify({ nombre: title })
+    });
+  }catch(err){
+    console.warn('No se pudo marcar Visto en el Sheet para', title, err);
+  }
+}
