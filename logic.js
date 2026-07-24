@@ -195,7 +195,7 @@ async function loadCatalog(){
     if(ERA_SET.has(cat)){
       const rating = parseFloat(r.Calificacion) || 0;
       const band = rating>8.0 ? 'Elite' : (rating>=7.5 ? 'Normal' : 'Ligera');
-      main.push({ title:r.Nombre, era:cat, rating, eps, emotional, band, plataforma:plat, poster:(r.Poster||'').trim(), smallPoster:(r.SmallPoster||'').trim() });
+      main.push({ title:r.Nombre, era:cat, rating, eps, emotional, band, plataforma:plat, poster:(r.PosterGrande||'').trim(), smallPoster:(r.SmallPoster||'').trim() });
     } else if(cat === 'Larga'){
       largas.push({ title:r.Nombre, eps, emotional, plataforma:plat });
     } else if(cat === 'Repetir'){
