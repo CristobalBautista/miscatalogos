@@ -484,7 +484,9 @@ document.getElementById('redoBtn').addEventListener('click', async ()=>{
   await startDrawNormal();
 });
 document.getElementById('confirmBtn').addEventListener('click', async ()=>{
+  const titleConfirmado = state.pendingPick.title.title;
   commitPick(state.pendingPick);
+  markVistoRemote(titleConfirmado); // fire-and-forget, no bloquea la UI
   document.getElementById('confirmRow').classList.add('hidden');
   const remaining = state.deck.filter(t=>!t.used).length;
   if(remaining===0){
@@ -535,7 +537,9 @@ document.getElementById('redoExtraBtn').addEventListener('click', ()=> startDraw
 document.getElementById('confirmExtraBtn').addEventListener('click', async ()=>{
   const cat = state.extra.category;
   const fromGate = state.extra.fromGate;
+  const titleConfirmado = state.extra.item.title;
   commitExtra(cat, state.extra.item);
+  markVistoRemote(titleConfirmado); // fire-and-forget, no bloquea la UI
   state.extra = null;
   document.getElementById('confirmExtraRow').classList.add('hidden');
   document.getElementById('continueExtraRow').classList.add('hidden');
