@@ -1,22 +1,16 @@
 // ============================================================
 // Mis Catalogos - Escritura de "Visto" desde la app
 // ============================================================
-// Que hace: recibe un POST con {secret, nombre} desde la app web,
+// Que hace: recibe un POST con {nombre} desde la app web,
 // busca esa fila por el valor de la columna "Nombre" y le pone "Y"
-// en la columna "Visto". No borra nada, no toca ninguna otra
-// columna.
+// en la columna "Visto". 
 //
-// AJUSTA ESTAS 2 LINEAS ANTES DE IMPLEMENTAR:
-const SHEET_NAME = 'Anime';       // nombre exacto de la pestana/hoja donde esta tu catalogo
-const SECRET = 'CAMBIAME-A-ALGO-TUYO'; // clave simple para que no cualquiera con la URL pueda escribir
+const SHEET_NAME = 'Anime'; 
 
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
 
-    if (body.secret !== SECRET) {
-      return respond({ ok: false, error: 'secret invalido' });
-    }
 
     const nombre = (body.nombre || '').trim();
     if (!nombre) {
@@ -59,14 +53,3 @@ function respond(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// Funcion de prueba: correla manualmente desde el editor de Apps Script
-// (boton Ejecutar, elegis "test") para probar sin tocar la app todavia.
-function test() {
-  const fakeEvent = {
-    postData: {
-      contents: JSON.stringify({ secret: SECRET, nombre: 'PONE_AQUI_UN_NOMBRE_REAL_DE_TU_CATALOGO' })
-    }
-  };
-  const result = doPost(fakeEvent);
-  Logger.log(result.getContent());
-}
