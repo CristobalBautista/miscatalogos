@@ -100,6 +100,7 @@ function showView(name) {
   ['home', 'anime', 'nt', 'ciclo', 'lista'].forEach(v => {
     document.getElementById('view-' + v).classList.toggle('hidden', v !== name);
   });
+  window.scrollTo(0, 0);
   if (name === 'home') renderThemeRow();
   if (name === 'anime') renderAnimeLanding();
   if (name === 'nt') renderNuevasTemp();
@@ -205,50 +206,63 @@ function renderMiniHist() {
 }
 
 // ============ VER LISTA COMPLETA ============
-// Grilla de tarjetas (estilo MyAnimeList / Nuevas Temporadas) de todo
-// MAIN_POOL no visto todavia. Tocar una tarjeta elige ese titulo directo
-// (sin pasar por el mazo del ciclo -- por eso no consume una ficha, solo se
-// marca como usado y se agrega al historial). El numero de columnas (2 o 3)
-// se guarda en state.listaCols para que quede la preferencia.
+// Grilla de tarjetas (estilo MyAnimeList / Nuevas Temporadas) de TODO el
+// catalogo valido (Era + Larga/Adulto/Repetir), incluyendo lo no disponible
+// y lo pendiente de estreno -- se muestran con flags, no se esconden.
+// Tocar una tarjeta disponible y sin pendiente elige ese titulo directo
+// (fuera del mazo del ciclo). Tocar una NO disponible abre un modal
+// informativo sin accion. Tocar una pendiente-de-estreno pero disponible
+// abre un modal de confirmacion ("¿arrancar igual?"). El numero de columnas
+// (2 o 3) se guarda en state.listaCols para que quede la preferencia.
+function catKeyFor(categoria) {
+  return categoria === 'Adulto' ? 'adulto' : categoria === 'Larga' ? 'larga' : 'repetir';
+}
 function renderListaCompleta() {
   const grid = document.getElementById('listaGrid');
   document.getElementById('listaCols2Btn').classList.toggle('active', state.listaCols !== 3);
   document.getElementById('listaCols3Btn').classList.toggle('active', state.listaCols === 3);
   grid.classList.toggle('cols-3', state.listaCols === 3);
 
-  const usedSet = new Set(state.usedTitles);
-  const items = MAIN_POOL.filter(a => !usedSet.has(a.title)).slice().sort((a, b) => a.title.localeCompare(b.title));
+  // union de todo lo ya elegido: titulos de Era (state.usedTitles) + los 3
+  // arrays de extras (adultoUsed/largaUsed/repUsed), para que Lista Completa
+  // no vuelva a ofrecer algo que ya se marco como visto/usado.
+  const usedSet = new Set([
+    ...state.usedTitles,
+    ...(state.adultoUsed || []), ...(state.largaUsed || []), ...(state.repUsed || [])
+  ]);
+  const items = LISTA_COMPLETA_POOL.filter(a => !usedSet.has(a.title)).slice().sort((a, b) => a.title.localeCompare(b.title));
   if (items.length === 0) {
     grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:var(--dim);">Sin títulos pendientes.</div>';
     return;
   }
-  grid.innerHTML = items.map(a => {
-    // La columna Plataforma a veces trae comentarios pegados (ej. "(Stay
-    // no)", "1 2 mas de 3") ademas del nombre de la plataforma -- no se
-    // omiten, se muestran como nota chica debajo de los chips.
-    const note = platformExtraNote(a.plataforma);
-    // Solo hay imagen si ya paso por el batch de enriquecimiento  Mientras tanto, se muestra el emoji de siempre
+  grid.innerHTML = items.map((a, idx) => {
+    const note = a.available ? platformExtraNote(a.plataforma) : '';
     const posterHtml = a.poster
       ? `<img src="${esc(a.poster)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🎬'}))">`
       : '🎬';
+    const badgeHtml = a.era
+      ? `<span class="lista-era-badge" style="background:var(--${a.era.toLowerCase()})"></span>`
+      : `<span class="lista-era-badge" style="background:var(--accent)"></span>`;
+    const catChip = a.era ? '' : `<span class="lista-card-cat">${esc(a.categoria)}</span><br>`;
+    const unavailTag = a.available ? '' : `<span class="lista-unavail-tag">No disponible</span><br>`;
     return `
-    <button class="lista-card" data-title="${esc(a.title)}">
+    <button class="lista-card${a.available ? '' : ' disabled'}" data-idx="${idx}">
       <div class="lista-poster">
-        <span class="lista-era-badge" style="background:var(--${a.era.toLowerCase()})"></span>
+        ${badgeHtml}
         ${posterHtml}
       </div>
       <div class="lista-card-body">
-        <div class="lista-card-title">${esc(a.title)}</div>
+        <div class="lista-card-title">${catChip}${unavailTag}${esc(a.title)}</div>
         <div class="lista-card-meta">${a.eps} eps</div>
-        <div class="lista-card-plat">${platformChipsHtml(a.plataforma)}</div>
+        <div class="lista-card-plat">${a.available ? platformChipsHtml(a.plataforma) : ''}</div>
         ${note ? `<span class="lista-card-note">${esc(note)}</span>` : ''}
       </div>
     </button>`;
   }).join('');
   grid.querySelectorAll('.lista-card').forEach(card => {
     card.addEventListener('click', () => {
-      const item = MAIN_POOL.find(a => a.title === card.dataset.title);
-      if (item) selectFromLista(item);
+      const item = items[parseInt(card.dataset.idx, 10)];
+      if (item) onListaCardTap(item);
     });
   });
 }
@@ -258,6 +272,81 @@ document.getElementById('listaCols2Btn').addEventListener('click', () => {
 document.getElementById('listaCols3Btn').addEventListener('click', () => {
   state.listaCols = 3; saveState(); renderListaCompleta();
 });
+
+// Decide que pasa al tocar una tarjeta de Lista Completa, segun sus flags.
+// Prioridad: no disponible > pendiente de estreno > seleccion normal --
+// si no esta disponible no importa si tambien esta pendiente, gana el
+// mensaje de no-disponible.
+function onListaCardTap(item) {
+  if (!item.available) {
+    const note = unavailableNote(item.plataforma);
+    showInfoModal({
+      title: 'No disponible',
+      message: 'No disponible en plataformas. Lo siento.' + (note ? ` (${note})` : ''),
+      buttons: [{ label: 'Entendido' }]
+    });
+    return;
+  }
+  if (item.pending) {
+    showInfoModal({
+      title: 'Nueva temporada',
+      message: 'Está estrenando o falta estrenar una nueva temporada. ¿Quieres arrancar aun así?',
+      buttons: [
+        { label: 'Sí, arrancar', action: () => commitFromLista(item) },
+        { label: 'Cancelar' }
+      ]
+    });
+    return;
+  }
+  commitFromLista(item);
+}
+
+// Confirma la seleccion de un item de Lista Completa, ya sea de Era
+// (selectFromLista, existente) o de Larga/Adulto/Repetir (via commitExtra
+// de logic.js, para que respete sus propios arrays de usados y no
+// desincronice el gate del ciclo).
+async function commitFromLista(item) {
+  if (item.era) {
+    await selectFromLista(item);
+  } else {
+    const catKey = catKeyFor(item.categoria);
+    state.lastAction = { type: 'lista-extra', snapshot: JSON.parse(JSON.stringify({
+      history: state.history, adultoUsed: state.adultoUsed, largaUsed: state.largaUsed,
+      repUsed: state.repUsed, owed: state.owed
+    })) };
+    commitExtra(catKey, item);
+    saveState();
+    await fadeToView('anime');
+  }
+}
+
+// ============ MODAL INFORMATIVO (no disponible / pendiente de estreno) ============
+function showInfoModal({ title, message, buttons }) {
+  document.getElementById('infoModalTitle').textContent = title;
+  document.getElementById('infoModalMsg').textContent = message;
+  const btnsWrap = document.getElementById('infoModalBtns');
+  btnsWrap.innerHTML = '';
+  buttons.forEach((b, i) => {
+    const btn = document.createElement('button');
+    btn.className = i === 0 && buttons.length > 1 ? 'btn-extra' : (buttons.length === 1 ? 'btn-block' : 'btn-ghost');
+    btn.textContent = b.label;
+    btn.addEventListener('click', () => {
+      hideInfoModal();
+      if (b.action) b.action();
+    });
+    btnsWrap.appendChild(btn);
+  });
+  document.getElementById('infoModal').classList.remove('hidden');
+}
+function hideInfoModal() {
+  document.getElementById('infoModal').classList.add('hidden');
+}
+// Cerrar tocando el fondo oscuro, igual que configModal -- sin accion (se
+// comporta como "Cancelar").
+document.getElementById('infoModal').addEventListener('click', (e) => {
+  if (e.target.id === 'infoModal') hideInfoModal();
+});
+
 async function selectFromLista(item) {
   state.lastAction = { type: 'lista', snapshot: JSON.parse(JSON.stringify({ history: state.history, usedTitles: state.usedTitles })) };
   state.usedTitles.push(item.title);

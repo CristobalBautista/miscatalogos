@@ -14,6 +14,13 @@ const THEMES = ['dark-purple','light'];
 const THEME_SWATCH = { 'dark-purple':'#b98ee8', 'light':'#5b4fd1' };
 
 let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
+// Pool para Lista Completa: TODOS los titulos validos (Era + Larga/Adulto/
+// Repetir), sin filtrar por disponibilidad ni PendienteTemporada -- a
+// diferencia de MAIN_POOL/LARGA_POOL/etc (que alimentan el sorteo y por eso
+// deben quedar filtrados), aca la idea es mostrar el catalogo completo con
+// flags (available/pending) para que la UI decida como pintarlo, no
+// esconder filas.
+let LISTA_COMPLETA_POOL = [];
 // TODOS los titulos de Dorada/Moderna/Clasica del CSV, SIN filtrar por
 // disponibilidad ni PendienteTemporada -- se usa solo para calcular las
 // proporciones del mazo (que tan grande es cada Era/Tipo en el catalogo real
@@ -131,6 +138,20 @@ function platformExtraNote(plat){
   return txt;
 }
 
+// Igual que platformExtraNote, pero pensada para el modal de "no disponible":
+// ademas de los nombres de plataforma, quita la "X" suelta y "Descargar" (que
+// son las 2 razones de no-disponibilidad), asi si queda algo mas es un
+// comentario real (ej. "X - vuelve en Enero") y no ruido.
+function unavailableNote(plat){
+  if(!plat) return '';
+  let txt = plat;
+  txt = txt.replace(/\bX\b/g, ' ');
+  txt = txt.replace(/Descargar/gi, ' ');
+  Object.keys(PLATFORM_ICONS).forEach(k => { txt = txt.replace(new RegExp(k, 'gi'), ''); });
+  txt = txt.replace(/[()-]/g, ' ').replace(/\s+/g, ' ').trim();
+  return txt;
+}
+
 // Descarga un CSV y lo convierte a un array de objetos {columna: valor} usando
 // PapaParse. cache:'no-store' evita que el navegador sirva una copia vieja del
 // archivo despues de que edites el CSV en Excel y lo vuelvas a subir.
@@ -165,7 +186,7 @@ async function loadCatalog(){
   // pasaba antes con el diccionario viejo.
   const ERA_SET = new Set(['Dorada','Moderna','Clasica']);
   const OTHER_CATS = new Set(['Adulto','Larga','Repetir']);
-  const main = [], largas = [], rep = [], adulto = [], fullEra = [];
+  const main = [], largas = [], rep = [], adulto = [], fullEra = [], listaCompleta = [];
   const catsDesconocidas = new Set();
 
   for(const r of catalogo){
@@ -179,23 +200,33 @@ async function loadCatalog(){
 
     // FULL_ERA_POOL: cuenta SIEMPRE, sin importar disponibilidad ni
     // temporada pendiente -- es el universo real para calcular proporciones.
+    const rating = parseFloat(r.Calificacion) || 0;
+    const band = ERA_SET.has(cat) ? (rating>8.0 ? 'Elite' : (rating>=7.5 ? 'Normal' : 'Ligera')) : null;
     if(ERA_SET.has(cat)){
-      const ratingFull = parseFloat(r.Calificacion) || 0;
-      const bandFull = ratingFull>8.0 ? 'Elite' : (ratingFull>=7.5 ? 'Normal' : 'Ligera');
-      fullEra.push({ era:cat, band:bandFull });
+      fullEra.push({ era:cat, band });
     }
 
-    const pend = (r.PendienteTemporada||'').trim();
-    if(pend === 'X') continue; // temporada nueva en curso/pendiente -> prioridad aparte, no entra al sorteo
+    const pend = (r.PendienteTemporada||'').trim() === 'X';
     const plat = (r.Plataforma||'').trim();
-    if(!isAvailable(plat)) continue; // sin plataforma real (X o requiere Descargar) -> fuera del sorteo
+    const available = isAvailable(plat);
     const eps = parseInt(r.Eps) || 0;
     const emotional = (r.Emotional||'').trim()==='X';
+    const poster = (r.Poster||'').trim();
+    const smallPoster = (r.PosterMediano||'').trim();
+
+    // LISTA_COMPLETA_POOL: guarda TODO (disponible, pendiente, o sin
+    // plataforma), con los flags puestos, para que la UI de Lista Completa
+    // decida como pintar cada fila en vez de que quede escondida.
+    listaCompleta.push({
+      title:r.Nombre, categoria:cat, era: ERA_SET.has(cat) ? cat : null, band, eps, emotional,
+      plataforma:plat, available, pending:pend, poster, smallPoster
+    });
+
+    if(pend) continue; // temporada nueva en curso/pendiente -> prioridad aparte, no entra al sorteo
+    if(!available) continue; // sin plataforma real (X o requiere Descargar) -> fuera del sorteo
 
     if(ERA_SET.has(cat)){
-      const rating = parseFloat(r.Calificacion) || 0;
-      const band = rating>8.0 ? 'Elite' : (rating>=7.5 ? 'Normal' : 'Ligera');
-      main.push({ title:r.Nombre, era:cat, rating, eps, emotional, band, plataforma:plat, poster:(r.Poster||'').trim(), smallPoster:(r.PosterMediano||'').trim() });
+      main.push({ title:r.Nombre, era:cat, rating, eps, emotional, band, plataforma:plat, poster, smallPoster });
     } else if(cat === 'Larga'){
       largas.push({ title:r.Nombre, eps, emotional, plataforma:plat });
     } else if(cat === 'Repetir'){
@@ -210,6 +241,7 @@ async function loadCatalog(){
   }
 
   MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep; FULL_ERA_POOL = fullEra;
+  LISTA_COMPLETA_POOL = listaCompleta;
 }
 
 // Arma la "bolsa" de un mazo nuevo (MAZO_SIZE fichas): Dorada y Moderna con
