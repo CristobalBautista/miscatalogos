@@ -243,8 +243,8 @@ function renderListaCompleta() {
     const badgeHtml = a.era
       ? `<span class="lista-era-badge" style="background:var(--${a.era.toLowerCase()})"></span>`
       : `<span class="lista-era-badge" style="background:var(--accent)"></span>`;
-    const catChip = a.era ? '' : `<span class="lista-card-cat">${esc(a.categoria)}</span><br>`;
-    const unavailTag = a.available ? '' : `<span class="lista-unavail-tag">No disponible</span><br>`;
+    const catChip = a.era ? '' : `<span class="lista-card-cat">${esc(a.categoria)}</span>`;
+    const unavailTag = a.available ? '' : `<span class="lista-unavail-tag">No disponible</span>`;
     return `
     <button class="lista-card${a.available ? '' : ' disabled'}" data-idx="${idx}">
       <div class="lista-poster">
@@ -252,7 +252,8 @@ function renderListaCompleta() {
         ${posterHtml}
       </div>
       <div class="lista-card-body">
-        <div class="lista-card-title">${catChip}${unavailTag}${esc(a.title)}</div>
+        ${catChip}${unavailTag}
+        <div class="lista-card-title">${esc(a.title)}</div>
         <div class="lista-card-meta">${a.eps} eps</div>
         <div class="lista-card-plat">${a.available ? platformChipsHtml(a.plataforma) : ''}</div>
         ${note ? `<span class="lista-card-note">${esc(note)}</span>` : ''}
