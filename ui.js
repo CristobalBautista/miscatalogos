@@ -28,9 +28,9 @@ function platformChipsHtml(plat) {
 async function loadState() {
   await loadCatalog();
   try {
-    const r = await window.storage.get('ruleta-anime-state-v6');
-    if (r && r.value) {
-      state = JSON.parse(r.value);
+    const raw = localStorage.getItem('ruleta-anime-state-v6');
+    if (raw) {
+      state = JSON.parse(raw);
       if (!state.seenNT) state.seenNT = [];
       if (!state.theme || !THEMES.includes(state.theme)) state.theme = 'dark-purple';
       if (state.devMode === undefined) state.devMode = false;
@@ -106,7 +106,6 @@ function showView(name) {
   if (name === 'nt') renderNuevasTemp();
   if (name === 'lista') renderListaCompleta();
   if (name === 'ciclo') {
-    document.getElementById('animStyleSelect').value = state.animStyle || 'cards';
     render();
   }
   saveState();
@@ -407,30 +406,10 @@ async function selectNuevaTemp(nt) {
 // revelar el resultado real. Es puramente decorativo -- el resultado ya
 // se calcula con drawNext()/drawExtra() de logic.js, el dado solo genera
 // la pausa dramatica.
-// ---------------- animacion de revelado (3 estilos, elegibles por dropdown) ----------------
-// Reemplaza el dado 3D viejo (no gustaba visualmente). Los 3 estilos comparten
-// el mismo contrato: playRevealAnimation() muestra #diceWrap, anima, y lo
-// vuelve a ocultar -- exactamente como antes hacia rollDice(), asi que los 2
-// call sites (startDrawNormal / startDrawExtra) no necesitan tocarse mas que
-// el nombre de la funcion.
-function buildRevealHTML(style) {
-  if (style === 'wheel') {
-    // Segmentos proporcionales a las 3 eras reales del catalogo (Dorada ~52%,
-    // Moderna ~30%, Clasica ~11%) -- puramente decorativo, el resultado real
-    // ya esta decidido antes de que la rueda gire.
-    return `<div class="anim-wheel-wrap">
-      <div class="anim-wheel-pointer"></div>
-      <div class="anim-wheel" id="animWheel" style="background:conic-gradient(var(--dorada) 0% 52%, var(--moderna) 52% 82%, var(--clasica) 82% 100%); transform:rotate(0deg);"></div>
-      <div class="anim-wheel-hub"></div>
-    </div>`;
-  }
-  if (style === 'slots') {
-    const icons = ['🎬', '⭐', '🎴', '🎬', '⭐', '🎴', '🎬', '⭐'];
-    return `<div class="anim-slot"><div class="anim-slot-strip" id="animSlotStrip" style="transform:translateY(0px);">
-      ${icons.map(i => `<div class="anim-slot-cell">${i}</div>`).join('')}
-    </div></div>`;
-  }
-  // 'cards' (default)
+// ---------------- animacion de revelado (solo "tarjetas girando" por ahora --
+// se sacaron ruleta/tragamonedas del selector, quedan de lado hasta mejorar
+// este estilo primero) ----------------
+function buildRevealHTML() {
   return `<div class="anim-cards">
     <div class="anim-card c1"></div>
     <div class="anim-card c2"></div>
@@ -439,45 +418,33 @@ function buildRevealHTML(style) {
 }
 async function playRevealAnimation() {
   const wrap = document.getElementById('diceWrap');
-  const style = state.animStyle || 'cards';
-  wrap.innerHTML = buildRevealHTML(style) + '<div class="reveal-label">Girando…</div>';
+  wrap.innerHTML = buildRevealHTML() + '<div class="reveal-label">Girando…</div>';
   wrap.style.display = 'flex';
-  // pequeña espera para que el navegador registre el estado inicial (0deg /
-  // 0px) antes de animar -- si no, a veces la transicion no dispara.
+  // pequeña espera para que el navegador registre el estado inicial antes de
+  // animar -- si no, a veces la transicion no dispara.
   await wait(30);
-  if (style === 'wheel') {
-    const wheel = document.getElementById('animWheel');
-    const spins = 4 + Math.floor(Math.random() * 3); // 4 a 6 vueltas completas
-    const finalDeg = spins * 360 + Math.floor(Math.random() * 360);
-    wheel.style.transform = `rotate(${finalDeg}deg)`;
-    await wait(2500); // que decelere y se note -- "que no se quite tan rapido"
-  } else if (style === 'slots') {
-    const strip = document.getElementById('animSlotStrip');
-    strip.style.transition = 'transform 1.8s cubic-bezier(.15,.85,.32,1)';
-    strip.style.transform = `translateY(-630px)`; // 7 celdas de 90px, aterriza en la 8va
-    await wait(1900);
-  } else {
-    await wait(1900);
-    document.querySelectorAll('.anim-card').forEach(c => c.style.animation = 'none');
-  }
-  await wait(300); // pausa visible antes de desaparecer, mismo motivo que arriba
+  await wait(1900);
+  document.querySelectorAll('.anim-card').forEach(c => c.style.animation = 'none');
+  await wait(300); // pausa visible antes de desaparecer
   wrap.style.display = 'none';
 }
-document.getElementById('animStyleSelect').addEventListener('change', (e) => {
-  state.animStyle = e.target.value;
-  saveState();
-});
 
 
 // ============ REVELADO DE LA TARJETA ============
-// Muestra Era -> Tipo -> Nombre -> Plataforma en fundidos escalonados
-// (no todo de golpe), para que se sienta como una revelacion.
+// Muestra Poster -> Era -> Tipo -> Nombre -> Streaming -> Puntaje/Eps ->
+// Plataforma -> Generos -> Temas -> Sinopsis en fundidos escalonados (no
+// todo de golpe), para que se sienta como una revelacion.
 function setupCardSkeleton() {
   document.getElementById('cardArea').innerHTML = `
+    <div class="card-poster" id="rvPoster"></div>
     <div class="card-tags" id="rvTags"></div>
     <div class="card-title" id="rvTitle"></div>
+    <div class="card-streaming-name" id="rvStreamName"></div>
     <div class="card-meta" id="rvMeta"></div>
     <div class="card-plat" id="rvPlat"></div>
+    <div class="card-genres" id="rvGenres"></div>
+    <div class="card-themes" id="rvThemes"></div>
+    <div class="card-sinopsis-wrap" id="rvSinopsisWrap"></div>
   `;
 }
 function addTag(container, text, cls) {
@@ -489,22 +456,57 @@ function addTag(container, text, cls) {
 }
 async function revealPickNormal(pick) {
   setupCardSkeleton();
+  const t = pick.title;
+  const posterEl = document.getElementById('rvPoster');
   const tags = document.getElementById('rvTags');
   const titleEl = document.getElementById('rvTitle');
+  const streamEl = document.getElementById('rvStreamName');
   const metaEl = document.getElementById('rvMeta');
   const platEl = document.getElementById('rvPlat');
+  const genresEl = document.getElementById('rvGenres');
+  const themesEl = document.getElementById('rvThemes');
+  const sinopsisWrap = document.getElementById('rvSinopsisWrap');
+
+  posterEl.innerHTML = t.poster
+    ? `<img src="${esc(t.poster)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🎬'}))">`
+    : '🎬';
+  posterEl.classList.add('fade-in');
   await wait(150);
   addTag(tags, ERA_LABELS[pick.token.era] || pick.token.era, 'era-' + pick.token.era);
   await wait(500);
   addTag(tags, pick.token.band, 'band-' + pick.token.band);
   await wait(500);
-  if (pick.title.emotional) { addTag(tags, 'Emotional', 'emo'); await wait(300); }
-  titleEl.textContent = pick.title.title;
+  if (t.emotional) { addTag(tags, 'Emotional', 'emo'); await wait(300); }
+  titleEl.textContent = t.title;
   titleEl.classList.add('fade-in');
-  metaEl.textContent = `★ ${pick.title.rating.toFixed(2)} · ${pick.title.eps} eps`;
+  if (t.nombreStreaming && t.nombreStreaming !== t.title) {
+    streamEl.textContent = 'En Plataforma: ' + t.nombreStreaming;
+    streamEl.classList.add('fade-in');
+  }
+  metaEl.textContent = `★ ${t.rating.toFixed(2)} · ${t.eps} eps`;
   metaEl.classList.add('fade-in');
-  platEl.innerHTML = platformChipsHtml(pick.title.plataforma);
+  platEl.innerHTML = platformChipsHtml(t.plataforma);
   platEl.classList.add('fade-in');
+  await wait(200);
+  if (t.generos) {
+    genresEl.innerHTML = t.generos.split(',').map(g => `<span class="tag-genre">${esc(g.trim())}</span>`).join('');
+    genresEl.classList.add('fade-in');
+  }
+  if (t.temas) {
+    themesEl.innerHTML = t.temas.split(',').map(x => `<span class="tag-theme">${esc(x.trim())}</span>`).join('');
+    themesEl.classList.add('fade-in');
+  }
+  if (t.sinopsis) {
+    sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)}</div>
+      <button type="button" class="card-sinopsis-toggle" id="rvSinopsisToggle">Ver más</button>`;
+    sinopsisWrap.classList.add('fade-in');
+    document.getElementById('rvSinopsisToggle').addEventListener('click', () => {
+      const el = document.getElementById('rvSinopsisText');
+      const btn = document.getElementById('rvSinopsisToggle');
+      const stillClamped = el.classList.toggle('clamped');
+      btn.textContent = stillClamped ? 'Ver más' : 'Ver menos';
+    });
+  }
 }
 async function revealPickExtra(item, cat) {
   setupCardSkeleton();
@@ -524,6 +526,37 @@ async function revealPickExtra(item, cat) {
   platEl.innerHTML = platformChipsHtml(item.plataforma);
   platEl.classList.add('fade-in');
 }
+
+// ============ RESET DE ESTADO (solo local, no toca Sheets) ============
+// Vuelve `state` al estado inicial hardcodeado en seedInitialState() de
+// logic.js (historial hasta Kakegurui) -- el mismo que tendria una
+// instalacion nueva de la app. No borra ni cambia nada en el Google Sheet
+// (eso se edita a mano si hace falta), y no redefine el mazo -- usa el mismo
+// freshDeck() de siempre, solo vuelve a marcar las mismas 6 fichas usadas
+// que ya trae seedInitialState(). Preferencias de UI (Modo Desarrollador,
+// tema, columnas de Lista Completa) se preservan a proposito para no
+// interrumpir la sesion de pruebas que dispara el reset.
+function resetStateToInitial() {
+  const keepDevMode = state.devMode;
+  const keepTheme = state.theme;
+  const keepListaCols = state.listaCols;
+  state = seedInitialState();
+  state.devMode = keepDevMode;
+  state.theme = keepTheme;
+  state.listaCols = keepListaCols;
+  saveState();
+  render();
+}
+document.getElementById('resetStateBtn').addEventListener('click', () => {
+  showInfoModal({
+    title: 'Reiniciar estado',
+    message: 'Vuelve el mazo, historial y contadores al estado inicial de prueba (hasta Kakegurui). No borra ni cambia nada en el Google Sheet. ¿Confirmas?',
+    buttons: [
+      { label: 'Sí, reiniciar', action: () => { resetStateToInitial(); toast('Estado reiniciado'); } },
+      { label: 'Cancelar' }
+    ]
+  });
+});
 
 function disableAllActionButtons(disabled) {
   ['nextBtn', 'redoBtn', 'confirmBtn', 'redoExtraBtn', 'confirmExtraBtn', 'continueExtraBtn',
