@@ -28,10 +28,6 @@ ui.js                  Todo lo que SI toca pantalla: mostrar/ocultar vistas, dib
                        listas y tablas, animaciones (dado, fundidos), botones.
                        Usa las funciones y variables de logic.js.
 
-catalogo.csv           Tu base de datos completa: nombre, categoria, calificacion,
-                        episodios, si tiene temporada pendiente, si es emotional,
-                        plataforma. Editable en Excel.
-
 nuevas_temporadas.csv  Lista corta de series con temporada nueva, y si ya termino.
 
 manifest.json           Metadata para que el celular pueda "instalar" la app
