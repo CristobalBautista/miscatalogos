@@ -113,9 +113,8 @@
   <!-- CICLO -->
   <div id="view-ciclo" class="hidden">
     <div class="back" id="backAnimeFromCiclo">← ANIME</div>
-    <div class="header">
+    <div class="header" id="header">
       <h1>Ruleta de Anime</h1>
-      <p>Era Clásica / Era Dorada / Era Moderna</p>
     </div>
 
     <div id="devPanel" class="dev-panel hidden">
@@ -126,6 +125,8 @@
         <div class="dev-stat"><div class="dev-stat-num" id="statCycleN">1</div><div class="dev-stat-label">N° ciclo</div></div>
       </div>
       <div class="dev-era-block" id="devEraBlock"></div>
+      <button type="button" class="btn-secondary" id="cycleClasicaColorBtn" style="width:100%;margin-top:10px;">🎨 Probar color Clásica</button>
+      <button type="button" class="btn-secondary" id="cycleBandColorBtn" style="width:100%;margin-top:8px;">🎨 Probar color Tipo</button>
       <button type="button" class="btn-secondary" id="resetStateBtn" style="width:100%;margin-top:14px;">↺ Reiniciar estado (prueba)</button>
     </div>
 
@@ -140,9 +141,9 @@
         </div>
         <div class="fp-group-label">Calidad</div>
         <div class="fp-pill-row">
-          <button class="fp-pill" data-group="calidad" data-value="Elite">Bueno</button>
+          <button class="fp-pill" data-group="calidad" data-value="Excelente">Excelente</button>
+          <button class="fp-pill" data-group="calidad" data-value="Buena">Buena</button>
           <button class="fp-pill" data-group="calidad" data-value="Normal">Normal</button>
-          <button class="fp-pill" data-group="calidad" data-value="Ligera">Relax</button>
         </div>
         <div class="fp-group-label">Género <span class="fp-stub-tag">(no funcional aún)</span></div>
         <div class="fp-pill-row">

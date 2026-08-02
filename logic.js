@@ -6,7 +6,7 @@
    (ver /docs o el README para el detalle de la simulacion).
    ============================================================ */
 
-const BAND_ORDER = ['Elite','Normal','Ligera'];
+const BAND_ORDER = ['Excelente','Buena','Normal'];
 const ERA_ORDER = ['Dorada','Moderna','Clasica'];
 const ERA_LABELS = { Dorada:'Era Dorada', Moderna:'Era Moderna', Clasica:'Era Clásica' };
 const REP_EVERY = 3;
@@ -63,9 +63,9 @@ function largestRemainder(counts, totalSlots){
 function computeCatalogStats(){
   const eraCounts = {Dorada:0, Moderna:0, Clasica:0};
   const bandCountsByEra = {
-    Dorada:{Elite:0,Normal:0,Ligera:0},
-    Moderna:{Elite:0,Normal:0,Ligera:0},
-    Clasica:{Elite:0,Normal:0,Ligera:0},
+    Dorada:{Excelente:0,Buena:0,Normal:0},
+    Moderna:{Excelente:0,Buena:0,Normal:0},
+    Clasica:{Excelente:0,Buena:0,Normal:0},
   };
   FULL_ERA_POOL.forEach(a=>{
     if(eraCounts[a.era]===undefined) return;
@@ -77,7 +77,7 @@ function computeCatalogStats(){
 
 // Arma la cuota de UN mazo de MAZO_SIZE: primero reparte los slots totales
 // entre las 3 Eras (proporcional real), y dentro de Dorada/Moderna reparte
-// esos slots entre Elite/Normal/Ligera (tambien proporcional real, mismo
+// esos slots entre Excelente/Buena/Normal (tambien proporcional real, mismo
 // metodo que ya usaba el RECIPE original pero con numeros vivos). Clasica
 // NO se subdivide aca -- tiene tan pocos slots por mazo que un cupo fijo por
 // tipo la sesgaria (podria tocarle 0 a alguna banda). Su tipo real se decide
@@ -201,7 +201,7 @@ async function loadCatalog(){
     // FULL_ERA_POOL: cuenta SIEMPRE, sin importar disponibilidad ni
     // temporada pendiente -- es el universo real para calcular proporciones.
     const rating = parseFloat(r.Calificacion) || 0;
-    const band = ERA_SET.has(cat) ? (rating>8.0 ? 'Elite' : (rating>=7.5 ? 'Normal' : 'Ligera')) : null;
+    const band = ERA_SET.has(cat) ? (rating>8.0 ? 'Excelente' : (rating>=7.5 ? 'Buena' : 'Normal')) : null;
     if(ERA_SET.has(cat)){
       fullEra.push({ era:cat, band });
     }
@@ -273,7 +273,7 @@ function freshDeck(){
 // que Clasica, a diferencia de Dorada/Moderna, NO tenia garantia de terminar
 // en las proporciones reales, solo se acercaba en promedio. La bolsa
 // caliente arregla esto: es una bolsa aparte con TODOS los titulos Clasica
-// reales (ej. 19 Elite / 18 Normal / 8 Ligera), que se va vaciando de a una
+// reales (ej. 19 Excelente / 18 Buena / 8 Normal), que se va vaciando de a una
 // cada vez que sale una Clasica -- igual que el mazo principal, pero a la
 // escala del catalogo Clasica completo (dura muchos mazos principales antes
 // de agotarse y rearmarse sola, porque Clasica es solo 2-3 fichas por mazo).
@@ -299,22 +299,22 @@ function ensureClasicaBag(){
 function seedInitialState(){
   const deck = freshDeck();
   function useToken(era,band){ const t = deck.find(x=>!x.used && x.era===era && x.band===band); if(t) t.used = true; }
-  useToken('Dorada','Elite'); useToken('Dorada','Elite');
+  useToken('Dorada','Excelente'); useToken('Dorada','Excelente');
+  useToken('Dorada','Buena');
   useToken('Dorada','Normal');
-  useToken('Dorada','Ligera');
-  useToken('Moderna','Normal'); useToken('Moderna','Normal');
+  useToken('Moderna','Buena'); useToken('Moderna','Buena');
   return {
     usedTitles: ['Assassination Classroom','7th Time Loop','Ping Pong the Animation','Sacrificial Princess and the King of Beasts','Charlotte','Kakegurui'],
     deck: deck,
     history: [
-      {title:'Kakegurui', era:'Dorada', band:'Ligera', emotional:false},
-      {title:'Charlotte', era:'Dorada', band:'Normal', emotional:true},
-      {title:'Sacrificial Princess and the King of Beasts', era:'Moderna', band:'Normal', emotional:true},
-      {title:'Ping Pong the Animation', era:'Dorada', band:'Elite', emotional:false},
-      {title:'7th Time Loop', era:'Moderna', band:'Normal', emotional:false},
-      {title:'Assassination Classroom', era:'Dorada', band:'Elite', emotional:false}
+      {title:'Kakegurui', era:'Dorada', band:'Normal', emotional:false},
+      {title:'Charlotte', era:'Dorada', band:'Buena', emotional:true},
+      {title:'Sacrificial Princess and the King of Beasts', era:'Moderna', band:'Buena', emotional:true},
+      {title:'Ping Pong the Animation', era:'Dorada', band:'Excelente', emotional:false},
+      {title:'7th Time Loop', era:'Moderna', band:'Buena', emotional:false},
+      {title:'Assassination Classroom', era:'Dorada', band:'Excelente', emotional:false}
     ],
-    emoCount: 2, lastEra:'Dorada', lastEraStreak:1, lastBand:'Ligera', lastBandStreak:1, emoCooldown:0,
+    emoCount: 2, lastEra:'Dorada', lastEraStreak:1, lastBand:'Normal', lastBandStreak:1, emoCooldown:0,
     clasicaBag: freshClasicaBag(),
     filters: { era:null, calidad:null, generos:[] },
     cycleNum: 1,
@@ -333,13 +333,22 @@ function seedInitialState(){
   };
 }
 
-// Persiste el objeto `state` completo en localStorage (namespace personal del
-// usuario, un dispositivo/navegador). Se llama despues de cualquier cambio de
-// estado. NOTA: antes usaba window.storage (API que solo existe en el entorno
-// de Artifacts de Claude, no en un navegador real -- por eso el estado nunca
-// se guardaba en produccion y cada F5 volvia a un estado basico).
+// Persiste EN CACHE, solo lo minimo indispensable para no repetir series ya
+// vistas entre sesiones: usedTitles + los 3 arrays de extras (Larga/Adulto/
+// Repetir). A proposito NO se guarda el resto del estado (mazo en curso,
+// historial detallado, ciclo, tema, Modo Desarrollador, pestaña actual) --
+// cada apertura de la app arranca fresca desde seedInitialState() (ver
+// loadState() en ui.js), solo con las series ya vistas restauradas.
 async function saveState(){
-  try{ localStorage.setItem('ruleta-anime-state-v6', JSON.stringify(state)); }catch(e){ console.error(e); }
+  try{
+    const cache = {
+      usedTitles: state.usedTitles,
+      largaUsed: state.largaUsed,
+      adultoUsed: state.adultoUsed,
+      repUsed: state.repUsed
+    };
+    localStorage.setItem('ruleta-anime-vistas-v1', JSON.stringify(cache));
+  }catch(e){ console.error(e); }
 }
 
 // Candidatas validas para la proxima tirada del mazo principal. 2 capas:
@@ -393,7 +402,7 @@ function candidateTokens(){
   return pool;
 }
 
-// Devuelve la banda (Elite/Normal/Ligera) de una ficha. Si ya trae banda fija
+// Devuelve la banda (Excelente/Buena/Normal) de una ficha. Si ya trae banda fija
 // (Dorada/Moderna) la devuelve tal cual. Si es Clasica (band=null), la saca
 // de la bolsa caliente (ver freshClasicaBag) -- respetando el filtro de
 // Calidad si esta activo, o si no la regla de racha (permite 2, bloquea 3ra),

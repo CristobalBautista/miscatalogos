@@ -27,43 +27,34 @@ function platformChipsHtml(plat) {
 // aplica el tema y muestra la vista donde el usuario se quedo.
 async function loadState() {
   await loadCatalog();
+  // Arranca siempre desde el estado inicial (mazo/ciclo/tema/Modo Desarrollador
+  // nuevos), y encima le restaura SOLO que series ya se vieron -- ver
+  // saveState() en logic.js para el porque de este scope reducido.
+  state = seedInitialState();
   try {
-    const raw = localStorage.getItem('ruleta-anime-state-v6');
+    const raw = localStorage.getItem('ruleta-anime-vistas-v1');
     if (raw) {
-      state = JSON.parse(raw);
-      if (!state.seenNT) state.seenNT = [];
-      if (!state.theme || !THEMES.includes(state.theme)) state.theme = 'dark-purple';
-      if (state.devMode === undefined) state.devMode = false;
-      if (!state.listaCols) state.listaCols = 2;
-      if (!state.animStyle) state.animStyle = 'cards';
-      // Migracion: el mazo paso de 18 fijo a 24 con cupos reales, y se sumo
-      // la bolsa caliente de Clasica + contadores de racha (antes solo
-      // existia para Elite). Si el estado guardado es de antes de esto, se
-      // arma un mazo nuevo -- sin perder historial ni usedTitles, solo se
-      // reinicia la "bolsa en curso", como si arrancara un mazo nuevo.
-      if (!state.clasicaBag || state.lastBandStreak === undefined) {
-        state.deck = freshDeck();
-        state.clasicaBag = freshClasicaBag();
-        state.lastBandStreak = 0;
-        state.lastEraStreak = 0;
-        state.emoCooldown = 0;
-        delete state.lastEra2;
-        delete state.lastEmo;
-      }
-      if (!state.filters) state.filters = { era: null, calidad: null, generos: [] };
+      const cache = JSON.parse(raw);
+      if (Array.isArray(cache.usedTitles)) state.usedTitles = cache.usedTitles;
+      if (Array.isArray(cache.largaUsed)) state.largaUsed = cache.largaUsed;
+      if (Array.isArray(cache.adultoUsed)) state.adultoUsed = cache.adultoUsed;
+      if (Array.isArray(cache.repUsed)) state.repUsed = cache.repUsed;
     }
-    else { state = seedInitialState(); await saveState(); }
-  } catch (e) { state = seedInitialState(); }
+  } catch (e) { console.error(e); }
   applyTheme(state.theme);
   document.getElementById('view-loading').classList.add('hidden');
-  showView(state.view || 'home');
+  showView('home');
   render();
 }
 
 
 
 // ============ TEMA DE COLOR ============
-function applyTheme(t) { document.documentElement.setAttribute('data-theme', t); }
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  if (clasicaColorIdx > 0) applyClasicaColor(clasicaColorIdx);
+  if (bandHueIdx > 0) applyBandHue(bandHueIdx);
+}
 function renderThemeRow() {
   const row = document.getElementById('themeRow');
   row.innerHTML = '';
@@ -78,6 +69,48 @@ function renderThemeRow() {
 }
 
 function ntAvailableList() { return NUEVAS_TEMP.filter(nt => nt.finished && !state.seenNT.includes(nt.title)); }
+
+// ============ MODO DESARROLLADOR: probar colores (solo visual, no persiste) ============
+// Ciclan una lista de opciones aplicando las variables CSS en vivo, para que
+// Diego decida a ojo cual se queda -- el valor final se deja a mano en
+// styles.css despues. No se guarda en localStorage a proposito (es una
+// herramienta de revision, no una preferencia real).
+const CLASICA_COLOR_OPTIONS = [
+  { name: 'Vino apagado (actual)', dark: '#c2577a', light: '#a13f5c' },
+  { name: 'Verde', dark: '#8faa5a', light: '#5f7a34' },
+  { name: 'Morado', dark: '#9d7fd6', light: '#6b4fc4' },
+  { name: 'Azul petróleo', dark: '#4a8fa8', light: '#2c6b80' },
+];
+let clasicaColorIdx = 0;
+function applyClasicaColor(idx) {
+  clasicaColorIdx = idx;
+  const opt = CLASICA_COLOR_OPTIONS[idx];
+  document.documentElement.style.setProperty('--clasica', state.theme === 'light' ? opt.light : opt.dark);
+}
+document.getElementById('cycleClasicaColorBtn').addEventListener('click', () => {
+  applyClasicaColor((clasicaColorIdx + 1) % CLASICA_COLOR_OPTIONS.length);
+  toast('Clásica: ' + CLASICA_COLOR_OPTIONS[clasicaColorIdx].name);
+});
+
+const BAND_HUE_OPTIONS = [
+  { name: 'Verde (actual)', dark: ['#4ade80', '#7fd88a', '#5c7a66'], light: ['#16a34a', '#2f9e52', '#6b8874'] },
+  { name: 'Azul acero', dark: ['#5aa9e6', '#7fb8dd', '#5f6e7a'], light: ['#2f6fb8', '#4a80b0', '#5f7280'] },
+  { name: 'Morado', dark: ['#c48ee8', '#a98edb', '#6e6480'], light: ['#7c4fd1', '#8f6bc4', '#6c6078'] },
+  { name: 'Coral', dark: ['#f0806a', '#e0958a', '#7a6560'], light: ['#c9502f', '#c96e5a', '#7a6560'] },
+];
+let bandHueIdx = 0;
+function applyBandHue(idx) {
+  bandHueIdx = idx;
+  const opt = BAND_HUE_OPTIONS[idx];
+  const shades = state.theme === 'light' ? opt.light : opt.dark;
+  document.documentElement.style.setProperty('--band-excelente', shades[0]);
+  document.documentElement.style.setProperty('--band-buena', shades[1]);
+  document.documentElement.style.setProperty('--band-normal', shades[2]);
+}
+document.getElementById('cycleBandColorBtn').addEventListener('click', () => {
+  applyBandHue((bandHueIdx + 1) % BAND_HUE_OPTIONS.length);
+  toast('Tipo: ' + BAND_HUE_OPTIONS[bandHueIdx].name);
+});
 
 
 // ============ NAVEGACION ENTRE VISTAS ============
@@ -100,7 +133,7 @@ function showView(name) {
   ['home', 'anime', 'nt', 'ciclo', 'lista'].forEach(v => {
     document.getElementById('view-' + v).classList.toggle('hidden', v !== name);
   });
-  window.scrollTo(0, 0);
+  document.getElementById('header').scrollIntoView({ behavior: "smooth"});
   if (name === 'home') renderThemeRow();
   if (name === 'anime') renderAnimeLanding();
   if (name === 'nt') renderNuevasTemp();
@@ -431,16 +464,15 @@ async function playRevealAnimation() {
 
 
 // ============ REVELADO DE LA TARJETA ============
-// Muestra Poster -> Era -> Tipo -> Nombre -> Streaming -> Puntaje/Eps ->
-// Plataforma -> Generos -> Temas -> Sinopsis en fundidos escalonados (no
-// todo de golpe), para que se sienta como una revelacion.
+// Muestra Poster -> Era -> Tipo -> Nombre -> Streaming -> Plataforma+Episodios
+// -> Generos -> Temas -> Sinopsis en fundidos escalonados (no todo de golpe),
+// para que se sienta como una revelacion.
 function setupCardSkeleton() {
   document.getElementById('cardArea').innerHTML = `
-    <div class="card-poster" id="rvPoster"></div>
+    <div class="card-poster-frame" id="rvPosterFrame"><div class="card-poster" id="rvPoster"></div></div>
     <div class="card-tags" id="rvTags"></div>
     <div class="card-title" id="rvTitle"></div>
     <div class="card-streaming-name" id="rvStreamName"></div>
-    <div class="card-meta" id="rvMeta"></div>
     <div class="card-plat" id="rvPlat"></div>
     <div class="card-genres" id="rvGenres"></div>
     <div class="card-themes" id="rvThemes"></div>
@@ -454,23 +486,33 @@ function addTag(container, text, cls) {
   container.appendChild(span);
   requestAnimationFrame(() => span.classList.add('fade-in'));
 }
+// Colores para el marco del poster: gradiente Era (arriba-izq) -> Tipo
+// (abajo-der). Clasica no tiene Tipo fijo por mazo visible aca (se resuelve
+// en resolveBand antes de llegar a esta pantalla, asi que pick.token.band
+// siempre viene ya resuelto -- Clasica igual tiene Tipo real en este punto).
+function posterFrameGradient(era, band) {
+  const eraVar = '--' + era.toLowerCase();
+  const bandVar = '--band-' + (band || 'normal').toLowerCase();
+  return `linear-gradient(135deg, var(${eraVar}), var(${bandVar}))`;
+}
 async function revealPickNormal(pick) {
   setupCardSkeleton();
   const t = pick.title;
+  const posterFrame = document.getElementById('rvPosterFrame');
   const posterEl = document.getElementById('rvPoster');
   const tags = document.getElementById('rvTags');
   const titleEl = document.getElementById('rvTitle');
   const streamEl = document.getElementById('rvStreamName');
-  const metaEl = document.getElementById('rvMeta');
   const platEl = document.getElementById('rvPlat');
   const genresEl = document.getElementById('rvGenres');
   const themesEl = document.getElementById('rvThemes');
   const sinopsisWrap = document.getElementById('rvSinopsisWrap');
 
+  posterFrame.style.background = posterFrameGradient(pick.token.era, pick.token.band);
   posterEl.innerHTML = t.poster
     ? `<img src="${esc(t.poster)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🎬'}))">`
     : '🎬';
-  posterEl.classList.add('fade-in');
+  posterFrame.classList.add('fade-in');
   await wait(150);
   addTag(tags, ERA_LABELS[pick.token.era] || pick.token.era, 'era-' + pick.token.era);
   await wait(500);
@@ -480,12 +522,10 @@ async function revealPickNormal(pick) {
   titleEl.textContent = t.title;
   titleEl.classList.add('fade-in');
   if (t.nombreStreaming && t.nombreStreaming !== t.title) {
-    streamEl.textContent = 'En Plataforma: ' + t.nombreStreaming;
+    streamEl.textContent = 'En streaming: ' + t.nombreStreaming;
     streamEl.classList.add('fade-in');
   }
-  metaEl.textContent = `★ ${t.rating.toFixed(2)} · ${t.eps} eps`;
-  metaEl.classList.add('fade-in');
-  platEl.innerHTML = platformChipsHtml(t.plataforma);
+  platEl.innerHTML = platformChipsHtml(t.plataforma) + `<span class="plat-eps">${t.eps} eps</span>`;
   platEl.classList.add('fade-in');
   await wait(200);
   if (t.generos) {
@@ -510,20 +550,22 @@ async function revealPickNormal(pick) {
 }
 async function revealPickExtra(item, cat) {
   setupCardSkeleton();
+  const posterFrame = document.getElementById('rvPosterFrame');
+  const posterEl = document.getElementById('rvPoster');
   const tags = document.getElementById('rvTags');
   const titleEl = document.getElementById('rvTitle');
-  const metaEl = document.getElementById('rvMeta');
   const platEl = document.getElementById('rvPlat');
   const label = cat === 'adulto' ? 'Adulto' : cat === 'larga' ? 'Larga' : 'Repetición';
+  posterFrame.style.background = 'linear-gradient(135deg, var(--accent), var(--accent))';
+  posterEl.innerHTML = '🎬';
+  posterFrame.classList.add('fade-in');
   await wait(150);
   addTag(tags, label, 'era-Extra');
   await wait(500);
   if (item.emotional) { addTag(tags, 'Emotional', 'emo'); await wait(300); }
   titleEl.textContent = item.title;
   titleEl.classList.add('fade-in');
-  metaEl.textContent = `${item.eps} eps`;
-  metaEl.classList.add('fade-in');
-  platEl.innerHTML = platformChipsHtml(item.plataforma);
+  platEl.innerHTML = platformChipsHtml(item.plataforma) + `<span class="plat-eps">${item.eps} eps</span>`;
   platEl.classList.add('fade-in');
 }
 
@@ -572,6 +614,7 @@ function disableAllActionButtons(disabled) {
 // Boton "Elegir siguiente": gira el dado, calcula el pick con drawNext(),
 // lo muestra, y deja los botones Confirmar/Buscar de nuevo listos.
 async function startDrawNormal() {
+  document.getElementById('header').scrollIntoView({ behavior: "smooth"});
   disableAllActionButtons(true);
   document.getElementById('normalRow').classList.add('hidden');
   document.getElementById('confirmRow').classList.add('hidden');
@@ -636,6 +679,7 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
 // pidio voluntariamente via boton Cartoon o un pill pendiente (ahi NO
 // toca el ciclo para nada).
 async function startDrawExtra(cat, fromGate) {
+  document.getElementById('header').scrollIntoView({ behavior: "smooth"});
   disableAllActionButtons(true);
   state.extra = { category: cat, fromGate: !!fromGate };
   document.getElementById('gateBox').classList.add('hidden');
@@ -729,11 +773,11 @@ function renderPendingPills() {
 // sin tocar nada aca:
 // 1) Cupos por Era (proporcional real sobre MAZO_SIZE=24), coloreado con el
 //    color de cada era, se apaga el cuadrito cuando esa ficha ya se uso.
-// 2) Cupos por Tipo (Elite/Normal/Ligera) dentro de Dorada y Moderna, tambien
+// 2) Cupos por Tipo (Excelente/Buena/Normal) dentro de Dorada y Moderna, tambien
 //    proporcional real. Clasica no tiene tipo fijo POR MAZO (se resuelve al
 //    usarse, desde su bolsa caliente aparte), por eso sus cuadritos de este
 //    bloque van en un color neutro.
-// 3) Bolsa caliente de Clasica: cuantos Elite/Normal/Ligera reales quedan sin
+// 3) Bolsa caliente de Clasica: cuantos Excelente/Buena/Normal reales quedan sin
 //    usar en la bolsa completa (dura muchos mazos, se ve aparte del mazo actual).
 function renderDevPanel() {
   const panel = document.getElementById('devPanel');
@@ -749,16 +793,19 @@ function renderDevPanel() {
   }
 
   let html = `<div class="dev-panel-title" style="margin-bottom:8px;">Por Era (mazo de ${state.deck.length})</div>`;
+  const { eraCounts } = computeCatalogStats();
+  const disponiblesPorEra = era => MAIN_POOL.filter(a => a.era === era).length;
   html += ERA_ORDER.map(era => {
     const tokens = state.deck.filter(t => t.era === era);
     return `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS[era] || era}</div>
-      <div class="dev-sq-group">${sqHtml(tokens, '--' + era.toLowerCase())}</div></div>`;
+      <div class="dev-sq-group">${sqHtml(tokens, '--' + era.toLowerCase())}</div>
+      <div class="dev-era-count">${disponiblesPorEra(era)}/${eraCounts[era] || 0} disp.</div></div>`;
   }).join('');
 
-  html += '<div class="dev-panel-title" style="margin:16px 0 8px;">Por Tipo (Elite / Normal / Ligera)</div>';
+  html += '<div class="dev-panel-title" style="margin:16px 0 8px;">Por Tipo (Excelente / Buena / Normal)</div>';
   html += ['Dorada', 'Moderna'].map(era => {
     const groups = BAND_ORDER.map(band => {
-      const colorVar = band === 'Elite' ? '--band-elite' : band === 'Normal' ? '--band-normal' : '--band-ligera';
+      const colorVar = band === 'Excelente' ? '--band-excelente' : band === 'Buena' ? '--band-buena' : '--band-normal';
       return sqHtml(tokensFor(era, band), colorVar);
     }).join('<span style="width:6px;display:inline-block;"></span>');
     return `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS[era] || era}</div>
@@ -769,9 +816,9 @@ function renderDevPanel() {
     <div class="dev-sq-group">${sqHtml(tokensFor('Clasica', null), '--dim')}</div></div>`;
 
   html += `<div class="dev-band-legend">
-    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-elite)"></span>Elite</div>
+    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-excelente)"></span>Excelente</div>
+    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-buena)"></span>Buena</div>
     <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-normal)"></span>Normal</div>
-    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-ligera)"></span>Ligera</div>
   </div>`;
 
   // Bolsa caliente de Clasica: independiente del mazo, dura muchos mazos.
@@ -779,7 +826,7 @@ function renderDevPanel() {
   const bagLeft = band => bag.filter(t => t.band === band && !t.used).length;
   const bagTotal = band => bag.filter(t => t.band === band).length;
   html += `<div class="dev-panel-title" style="margin:16px 0 8px;">Bolsa caliente Clásica (independiente del mazo)</div>
-    <div class="dev-era-row"><div class="dev-era-label" style="width:auto;">Elite ${bagLeft('Elite')}/${bagTotal('Elite')} · Normal ${bagLeft('Normal')}/${bagTotal('Normal')} · Ligera ${bagLeft('Ligera')}/${bagTotal('Ligera')}</div></div>`;
+    <div class="dev-era-row"><div class="dev-era-label" style="width:auto;">Excelente ${bagLeft('Excelente')}/${bagTotal('Excelente')} · Buena ${bagLeft('Buena')}/${bagTotal('Buena')} · Normal ${bagLeft('Normal')}/${bagTotal('Normal')}</div></div>`;
 
   block.innerHTML = html;
 }
