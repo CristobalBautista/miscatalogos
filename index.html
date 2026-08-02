@@ -120,7 +120,13 @@
 
     <div id="devPanel" class="dev-panel hidden">
       <div class="dev-panel-title">🛠 Modo Desarrollador — cupos del ciclo</div>
+      <div class="dev-stats-row">
+        <div class="dev-stat"><div class="dev-stat-num" id="statPos">0/18</div><div class="dev-stat-label">Ciclo</div></div>
+        <div class="dev-stat"><div class="dev-stat-num" id="statEmo">0/5</div><div class="dev-stat-label">Emotional</div></div>
+        <div class="dev-stat"><div class="dev-stat-num" id="statCycleN">1</div><div class="dev-stat-label">N° ciclo</div></div>
+      </div>
       <div class="dev-era-block" id="devEraBlock"></div>
+      <button type="button" class="btn-secondary" id="resetStateBtn" style="width:100%;margin-top:14px;">↺ Reiniciar estado (prueba)</button>
     </div>
 
     <div id="filterPanel" class="hidden">
@@ -151,15 +157,6 @@
 
     <div class="pending-row" id="pendingRow"></div>
 
-    <div class="anim-style-row">
-      <label for="animStyleSelect" class="anim-style-label">Animación</label>
-      <select id="animStyleSelect" class="anim-style-select">
-        <option value="cards">🎴 Tarjetas girando</option>
-        <option value="wheel">🎡 Ruleta</option>
-        <option value="slots">🎰 Tragamonedas</option>
-      </select>
-    </div>
-
     <div class="dice-wrap" id="diceWrap"></div>
 
     <div class="card" id="cardArea">
@@ -189,12 +186,6 @@
     </div>
     <div class="btn-row hidden" id="continueExtraRow">
       <button class="btn-ghost" id="continueExtraBtn">➡️ Mejor continuar ciclo</button>
-    </div>
-
-    <div class="stats-row">
-      <div class="stat"><div class="stat-num" id="statPos">0/18</div><div class="stat-label">Ciclo</div></div>
-      <div class="stat"><div class="stat-num" id="statEmo">0/5</div><div class="stat-label">Emotional</div></div>
-      <div class="stat"><div class="stat-num" id="statCycleN">1</div><div class="stat-label">N° ciclo</div></div>
     </div>
 
     <div class="deck">

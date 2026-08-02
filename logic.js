@@ -96,7 +96,7 @@ const PLATFORM_ICONS = { netflix:'netflix', crunchyroll:'crunchyroll', prime:'pr
 const PLATFORM_EMOJI = { netflix:'🔴', crunchyroll:'🟠', prime:'🔵', disney:'⭐', max:'🟣' };
 
 // El estado completo de la app (mazo actual, historial, tema, etc). Se
-// inicializa en seedInitialState() y se persiste con window.storage.
+// inicializa en seedInitialState() y se persiste con localStorage.
 let state = null;
 
 // Escapa texto para insertarlo seguro dentro de innerHTML (evita XSS/roturas de HTML).
@@ -226,7 +226,13 @@ async function loadCatalog(){
     if(!available) continue; // sin plataforma real (X o requiere Descargar) -> fuera del sorteo
 
     if(ERA_SET.has(cat)){
-      main.push({ title:r.Nombre, era:cat, rating, eps, emotional, band, plataforma:plat, poster, smallPoster });
+      main.push({
+        title:r.Nombre, era:cat, rating, eps, emotional, band, plataforma:plat, poster, smallPoster,
+        nombreStreaming:(r.Nombre_Streaming||'').trim(),
+        sinopsis:(r.Sinopsis||'').trim(),
+        generos:(r.Generos||'').trim(),
+        temas:(r.Temas||'').trim()
+      });
     } else if(cat === 'Larga'){
       largas.push({ title:r.Nombre, eps, emotional, plataforma:plat });
     } else if(cat === 'Repetir'){
@@ -327,10 +333,13 @@ function seedInitialState(){
   };
 }
 
-// Persiste el objeto `state` completo en window.storage (namespace personal del
-// usuario, no compartido). Se llama despues de cualquier cambio de estado.
+// Persiste el objeto `state` completo en localStorage (namespace personal del
+// usuario, un dispositivo/navegador). Se llama despues de cualquier cambio de
+// estado. NOTA: antes usaba window.storage (API que solo existe en el entorno
+// de Artifacts de Claude, no en un navegador real -- por eso el estado nunca
+// se guardaba en produccion y cada F5 volvia a un estado basico).
 async function saveState(){
-  try{ await window.storage.set('ruleta-anime-state-v6', JSON.stringify(state)); }catch(e){ console.error(e); }
+  try{ localStorage.setItem('ruleta-anime-state-v6', JSON.stringify(state)); }catch(e){ console.error(e); }
 }
 
 // Candidatas validas para la proxima tirada del mazo principal. 2 capas:
@@ -546,7 +555,7 @@ function commitExtra(cat, item){
 // Le avisa al Apps Script (Web App) que un titulo se confirmo, para que
 // marque Visto=Y en la fila correspondiente. Fire-and-forget a proposito:
 // si falla (sin internet, URL vieja, etc) NO debe trabar la app ni el
-// flujo normal -- el estado local (state.usedTitles / window.storage) ya
+// flujo normal -- el estado local (state.usedTitles / localStorage) ya
 // es la fuente de verdad para que el sorteo no repita, esto es solo para
 // que el Sheet quede reflejado. Reintentar o avisar visualmente si falla
 // es un pendiente aparte, no bloquea el uso hoy.
