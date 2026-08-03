@@ -52,8 +52,7 @@ async function loadState() {
 // ============ TEMA DE COLOR ============
 function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
-  if (clasicaColorIdx > 0) applyClasicaColor(clasicaColorIdx);
-  if (bandHueIdx > 0) applyBandHue(bandHueIdx);
+  reapplyColorSliders();
 }
 function renderThemeRow() {
   const row = document.getElementById('themeRow');
@@ -70,46 +69,67 @@ function renderThemeRow() {
 
 function ntAvailableList() { return NUEVAS_TEMP.filter(nt => nt.finished && !state.seenNT.includes(nt.title)); }
 
-// ============ MODO DESARROLLADOR: probar colores (solo visual, no persiste) ============
-// Ciclan una lista de opciones aplicando las variables CSS en vivo, para que
-// Diego decida a ojo cual se queda -- el valor final se deja a mano en
-// styles.css despues. No se guarda en localStorage a proposito (es una
-// herramienta de revision, no una preferencia real).
-const CLASICA_COLOR_OPTIONS = [
-  { name: 'Vino apagado (actual)', dark: '#c2577a', light: '#a13f5c' },
-  { name: 'Verde', dark: '#8faa5a', light: '#5f7a34' },
-  { name: 'Morado', dark: '#9d7fd6', light: '#6b4fc4' },
-  { name: 'Azul petróleo', dark: '#4a8fa8', light: '#2c6b80' },
-];
-let clasicaColorIdx = 0;
-function applyClasicaColor(idx) {
-  clasicaColorIdx = idx;
-  const opt = CLASICA_COLOR_OPTIONS[idx];
-  document.documentElement.style.setProperty('--clasica', state.theme === 'light' ? opt.light : opt.dark);
+// ============ MODO DESARROLLADOR: deslizadores de color (solo visual, no
+// persiste) ============
+// Cada deslizador va de 0 a 100. Para Clasica/Excelente/Buena/Normal: 0-3 es
+// gris (desaturado, pedido explicitamente para Clasica), 4-100 recorre toda
+// la rueda de color (matiz 0-360). Para Dorada: no recorre toda la rueda
+// (pedido explicito: "dejarlo dorado", solo variar cuanto), varia
+// saturacion/luminosidad dentro del tono dorado fijo. El valor final se deja
+// a mano en styles.css despues de decidir -- esto es solo para probar en
+// vivo, por eso no se guarda en localStorage.
+const GOLD_HUE = 42;
+function hueToColor(value, theme) {
+  if (value < 4) return theme === 'light' ? 'hsl(0,0%,35%)' : 'hsl(0,0%,60%)';
+  const hue = ((value - 4) / 96) * 360;
+  const light = theme === 'light' ? 40 : 62;
+  return `hsl(${hue.toFixed(0)}, 60%, ${light}%)`;
 }
-document.getElementById('cycleClasicaColorBtn').addEventListener('click', () => {
-  applyClasicaColor((clasicaColorIdx + 1) % CLASICA_COLOR_OPTIONS.length);
-  toast('Clásica: ' + CLASICA_COLOR_OPTIONS[clasicaColorIdx].name);
+function doradaToColor(value, theme) {
+  const sat = 25 + (value / 100) * 55;
+  const light = theme === 'light' ? (28 + (value / 100) * 16) : (52 + (value / 100) * 18);
+  return `hsl(${GOLD_HUE}, ${sat.toFixed(0)}%, ${light.toFixed(0)}%)`;
+}
+// Recomendados: matices bien separados entre si para que Era y Tipo nunca
+// se vean parecidos en el marco del poster (que combina ambos en gradiente).
+// Dorada ~42 (fijo), Clasica ~304 (morado-vino), Excelente ~357 (rojo),
+// Buena ~214 (azul), Normal = gris -- Moderna se deja fija, sin deslizador.
+const COLOR_SLIDERS = {
+  dorada: { varName: '--dorada', fn: doradaToColor, recommended: 75, value: 75 },
+  clasica: { varName: '--clasica', fn: hueToColor, recommended: 84, value: 84 },
+  excelente: { varName: '--band-excelente', fn: hueToColor, recommended: 98, value: 98 },
+  buena: { varName: '--band-buena', fn: hueToColor, recommended: 60, value: 60 },
+  normal: { varName: '--band-normal', fn: hueToColor, recommended: 0, value: 0 },
+};
+function sliderElFor(key) { return document.getElementById('slider' + key.charAt(0).toUpperCase() + key.slice(1)); }
+function applyColorSlider(key, value) {
+  const cfg = COLOR_SLIDERS[key];
+  cfg.value = value;
+  document.documentElement.style.setProperty(cfg.varName, cfg.fn(value, state.theme));
+}
+function reapplyColorSliders() {
+  Object.keys(COLOR_SLIDERS).forEach(key => applyColorSlider(key, COLOR_SLIDERS[key].value));
+}
+Object.keys(COLOR_SLIDERS).forEach(key => {
+  const el = sliderElFor(key);
+  el.value = COLOR_SLIDERS[key].value;
+  el.addEventListener('input', () => applyColorSlider(key, parseInt(el.value, 10)));
+});
+document.getElementById('recomendarColoresBtn').addEventListener('click', () => {
+  Object.keys(COLOR_SLIDERS).forEach(key => {
+    const rec = COLOR_SLIDERS[key].recommended;
+    sliderElFor(key).value = rec;
+    applyColorSlider(key, rec);
+  });
+  toast('Colores recomendados aplicados');
 });
 
-const BAND_HUE_OPTIONS = [
-  { name: 'Verde (actual)', dark: ['#4ade80', '#7fd88a', '#5c7a66'], light: ['#16a34a', '#2f9e52', '#6b8874'] },
-  { name: 'Azul acero', dark: ['#5aa9e6', '#7fb8dd', '#5f6e7a'], light: ['#2f6fb8', '#4a80b0', '#5f7280'] },
-  { name: 'Morado', dark: ['#c48ee8', '#a98edb', '#6e6480'], light: ['#7c4fd1', '#8f6bc4', '#6c6078'] },
-  { name: 'Coral', dark: ['#f0806a', '#e0958a', '#7a6560'], light: ['#c9502f', '#c96e5a', '#7a6560'] },
-];
-let bandHueIdx = 0;
-function applyBandHue(idx) {
-  bandHueIdx = idx;
-  const opt = BAND_HUE_OPTIONS[idx];
-  const shades = state.theme === 'light' ? opt.light : opt.dark;
-  document.documentElement.style.setProperty('--band-excelente', shades[0]);
-  document.documentElement.style.setProperty('--band-buena', shades[1]);
-  document.documentElement.style.setProperty('--band-normal', shades[2]);
-}
-document.getElementById('cycleBandColorBtn').addEventListener('click', () => {
-  applyBandHue((bandHueIdx + 1) % BAND_HUE_OPTIONS.length);
-  toast('Tipo: ' + BAND_HUE_OPTIONS[bandHueIdx].name);
+// Item 6: on/off del estilo "tag" (pastilla con color) para generos/temas en
+// la tarjeta de seleccion -- apagado = texto plano estilo MAL/Trakt. Variable
+// de sesion nomas (no persiste), la lee revealPickNormal() en cada tirada.
+let genreTagStyleOn = true;
+document.getElementById('tagStyleToggle').addEventListener('change', (e) => {
+  genreTagStyleOn = e.target.checked;
 });
 
 
@@ -133,7 +153,7 @@ function showView(name) {
   ['home', 'anime', 'nt', 'ciclo', 'lista'].forEach(v => {
     document.getElementById('view-' + v).classList.toggle('hidden', v !== name);
   });
-  document.getElementById('header').scrollIntoView({ behavior: "smooth"});
+  window.scrollTo(0, 0);
   if (name === 'home') renderThemeRow();
   if (name === 'anime') renderAnimeLanding();
   if (name === 'nt') renderNuevasTemp();
@@ -240,20 +260,26 @@ function renderMiniHist() {
 // ============ VER LISTA COMPLETA ============
 // Grilla de tarjetas (estilo MyAnimeList / Nuevas Temporadas) de TODO el
 // catalogo valido (Era + Larga/Adulto/Repetir), incluyendo lo no disponible
-// y lo pendiente de estreno -- se muestran con flags, no se esconden.
-// Tocar una tarjeta disponible y sin pendiente elige ese titulo directo
-// (fuera del mazo del ciclo). Tocar una NO disponible abre un modal
-// informativo sin accion. Tocar una pendiente-de-estreno pero disponible
-// abre un modal de confirmacion ("¿arrancar igual?"). El numero de columnas
-// (2 o 3) se guarda en state.listaCols para que quede la preferencia.
+// y lo pendiente de estreno -- se muestran con flags, no se esconden (salvo
+// que el usuario apague "Mostrar no disponibles" desde el filtro). Tocar una
+// tarjeta disponible y sin pendiente elige ese titulo directo (fuera del
+// mazo del ciclo). Tocar una NO disponible abre un modal informativo sin
+// accion. Tocar una pendiente-de-estreno pero disponible abre un modal de
+// confirmacion ("¿arrancar igual?"). Columnas (2/3/4) y mostrar/ocultar no
+// disponibles se guardan en state.listaCols / state.listaShowUnavail
+// (preferencia de la sesion actual, no sobrevive a un F5 -- ver saveState).
 function catKeyFor(categoria) {
   return categoria === 'Adulto' ? 'adulto' : categoria === 'Larga' ? 'larga' : 'repetir';
 }
 function renderListaCompleta() {
   const grid = document.getElementById('listaGrid');
-  document.getElementById('listaCols2Btn').classList.toggle('active', state.listaCols !== 3);
-  document.getElementById('listaCols3Btn').classList.toggle('active', state.listaCols === 3);
-  grid.classList.toggle('cols-3', state.listaCols === 3);
+  const cols = state.listaCols || 2;
+  ['listaColsBtn2', 'listaColsBtn3', 'listaColsBtn4'].forEach(id => {
+    document.getElementById(id).classList.toggle('active', parseInt(document.getElementById(id).dataset.cols, 10) === cols);
+  });
+  grid.classList.toggle('cols-3', cols === 3);
+  grid.classList.toggle('cols-4', cols === 4);
+  document.getElementById('listaShowUnavailToggle').checked = state.listaShowUnavail !== false;
 
   // union de todo lo ya elegido: titulos de Era (state.usedTitles) + los 3
   // arrays de extras (adultoUsed/largaUsed/repUsed), para que Lista Completa
@@ -262,7 +288,9 @@ function renderListaCompleta() {
     ...state.usedTitles,
     ...(state.adultoUsed || []), ...(state.largaUsed || []), ...(state.repUsed || [])
   ]);
-  const items = LISTA_COMPLETA_POOL.filter(a => !usedSet.has(a.title)).slice().sort((a, b) => a.title.localeCompare(b.title));
+  let items = LISTA_COMPLETA_POOL.filter(a => !usedSet.has(a.title));
+  if (state.listaShowUnavail === false) items = items.filter(a => a.available);
+  items = items.slice().sort((a, b) => a.title.localeCompare(b.title));
   if (items.length === 0) {
     grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:var(--dim);">Sin títulos pendientes.</div>';
     return;
@@ -272,15 +300,11 @@ function renderListaCompleta() {
     const posterHtml = a.poster
       ? `<img src="${esc(a.poster)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🎬'}))">`
       : '🎬';
-    const badgeHtml = a.era
-      ? `<span class="lista-era-badge" style="background:var(--${a.era.toLowerCase()})"></span>`
-      : `<span class="lista-era-badge" style="background:var(--accent)"></span>`;
     const catChip = a.era ? '' : `<span class="lista-card-cat">${esc(a.categoria)}</span>`;
     const unavailTag = a.available ? '' : `<span class="lista-unavail-tag">No disponible</span>`;
     return `
     <button class="lista-card${a.available ? '' : ' disabled'}" data-idx="${idx}">
       <div class="lista-poster">
-        ${badgeHtml}
         ${posterHtml}
       </div>
       <div class="lista-card-body">
@@ -299,11 +323,35 @@ function renderListaCompleta() {
     });
   });
 }
-document.getElementById('listaCols2Btn').addEventListener('click', () => {
-  state.listaCols = 2; saveState(); renderListaCompleta();
+['listaColsBtn2', 'listaColsBtn3', 'listaColsBtn4'].forEach(id => {
+  document.getElementById(id).addEventListener('click', (e) => {
+    state.listaCols = parseInt(e.target.dataset.cols, 10);
+    saveState(); renderListaCompleta();
+  });
 });
-document.getElementById('listaCols3Btn').addEventListener('click', () => {
-  state.listaCols = 3; saveState(); renderListaCompleta();
+document.getElementById('listaShowUnavailToggle').addEventListener('change', (e) => {
+  state.listaShowUnavail = e.target.checked;
+  saveState(); renderListaCompleta();
+});
+document.getElementById('listaFilterToggle').addEventListener('click', () => {
+  document.getElementById('listaFilterDrawer').classList.toggle('hidden');
+});
+document.addEventListener('click', (e) => {
+  const drawer = document.getElementById('listaFilterDrawer');
+  const toggleBtn = document.getElementById('listaFilterToggle');
+  if (!drawer.classList.contains('hidden') && !drawer.contains(e.target) && e.target !== toggleBtn) {
+    drawer.classList.add('hidden');
+  }
+});
+// Boton flotante "volver arriba": solo aparece cuando hay algo de scroll
+// hecho en la pestaña Lista Completa.
+window.addEventListener('scroll', () => {
+  if (state.view !== 'lista') return;
+  const btn = document.getElementById('listaBackTopBtn');
+  btn.classList.toggle('hidden', window.scrollY < 300);
+});
+document.getElementById('listaBackTopBtn').addEventListener('click', () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 // Decide que pasa al tocar una tarjeta de Lista Completa, segun sus flags.
@@ -343,10 +391,12 @@ async function commitFromLista(item) {
     await selectFromLista(item);
   } else {
     const catKey = catKeyFor(item.categoria);
-    state.lastAction = { type: 'lista-extra', snapshot: JSON.parse(JSON.stringify({
-      history: state.history, adultoUsed: state.adultoUsed, largaUsed: state.largaUsed,
-      repUsed: state.repUsed, owed: state.owed
-    })) };
+    state.lastAction = {
+      type: 'lista-extra', snapshot: JSON.parse(JSON.stringify({
+        history: state.history, adultoUsed: state.adultoUsed, largaUsed: state.largaUsed,
+        repUsed: state.repUsed, owed: state.owed
+      }))
+    };
     commitExtra(catKey, item);
     saveState();
     await fadeToView('anime');
@@ -406,15 +456,19 @@ function renderNuevasTemp() {
     grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:var(--dim); padding:20px;">No hay temporadas nuevas listas por ahora.</div>`;
     return;
   }
-  grid.innerHTML = avail.map(nt => `
+  grid.innerHTML = avail.map(nt => {
+    const posterHtml = nt.poster
+      ? `<img src="${esc(nt.poster)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🎬'}))">`
+      : '🎬';
+    return `
     <button class="nt-card" data-title="${esc(nt.title)}">
-      <div class="nt-poster">🎬</div>
+      <div class="nt-poster">${posterHtml}</div>
       <div class="nt-card-body">
         <div class="nt-card-title">${esc(nt.title)}</div>
-        <div class="nt-card-meta">${nt.eps ? esc(nt.eps) : '—'}</div>
+        <div class="nt-card-meta">${esc(nt.eps)} eps</div>
       </div>
-    </button>
-  `).join('');
+    </button>`;
+  }).join('');
   grid.querySelectorAll('.nt-card').forEach(card => {
     card.addEventListener('click', () => {
       const nt = NUEVAS_TEMP.find(x => x.title === card.dataset.title);
@@ -464,18 +518,20 @@ async function playRevealAnimation() {
 
 
 // ============ REVELADO DE LA TARJETA ============
-// Muestra Poster -> Era -> Tipo -> Nombre -> Streaming -> Plataforma+Episodios
-// -> Generos -> Temas -> Sinopsis en fundidos escalonados (no todo de golpe),
-// para que se sienta como una revelacion.
+// Orden: Poster -> Era/Tipo/Emotional -> Nombre -> Generos+Temas (fusionados,
+// con o sin estilo tag segun genreTagStyleOn) -> Streaming+Plataforma+
+// Episodios (alineado a la izquierda) -> Sinopsis. Fundidos escalonados (no
+// todo de golpe), para que se sienta como una revelacion.
 function setupCardSkeleton() {
   document.getElementById('cardArea').innerHTML = `
     <div class="card-poster-frame" id="rvPosterFrame"><div class="card-poster" id="rvPoster"></div></div>
     <div class="card-tags" id="rvTags"></div>
     <div class="card-title" id="rvTitle"></div>
-    <div class="card-streaming-name" id="rvStreamName"></div>
-    <div class="card-plat" id="rvPlat"></div>
     <div class="card-genres" id="rvGenres"></div>
-    <div class="card-themes" id="rvThemes"></div>
+    <div class="card-info-row" id="rvInfoRow">
+      <div class="card-streaming-name" id="rvStreamName"></div>
+      <div class="card-plat" id="rvPlat"></div>
+    </div>
     <div class="card-sinopsis-wrap" id="rvSinopsisWrap"></div>
   `;
 }
@@ -495,6 +551,21 @@ function posterFrameGradient(era, band) {
   const bandVar = '--band-' + (band || 'normal').toLowerCase();
   return `linear-gradient(135deg, var(${eraVar}), var(${bandVar}))`;
 }
+// Item 6: genero+tema fusionados en una sola lista, sin diferenciar cual es
+// cual. genreTagStyleOn decide si se ven como pastillas de color o como
+// texto plano separado por "·" (estilo MAL/Trakt) -- toggle en Modo
+// Desarrollador.
+function renderGenresThemes(container, t) {
+  const all = [
+    ...(t.generos ? t.generos.split(',') : []),
+    ...(t.temas ? t.temas.split(',') : [])
+  ].map(s => s.trim()).filter(Boolean);
+  if (all.length === 0) return;
+  container.innerHTML = genreTagStyleOn
+    ? all.map(g => `<span class="tag-genre">${esc(g)}</span>`).join('')
+    : `<span class="card-genres-plain">${all.map(g => esc(g)).join(' · ')}</span>`;
+  container.classList.add('fade-in');
+}
 async function revealPickNormal(pick) {
   setupCardSkeleton();
   const t = pick.title;
@@ -502,10 +573,9 @@ async function revealPickNormal(pick) {
   const posterEl = document.getElementById('rvPoster');
   const tags = document.getElementById('rvTags');
   const titleEl = document.getElementById('rvTitle');
+  const genresEl = document.getElementById('rvGenres');
   const streamEl = document.getElementById('rvStreamName');
   const platEl = document.getElementById('rvPlat');
-  const genresEl = document.getElementById('rvGenres');
-  const themesEl = document.getElementById('rvThemes');
   const sinopsisWrap = document.getElementById('rvSinopsisWrap');
 
   posterFrame.style.background = posterFrameGradient(pick.token.era, pick.token.band);
@@ -521,21 +591,15 @@ async function revealPickNormal(pick) {
   if (t.emotional) { addTag(tags, 'Emotional', 'emo'); await wait(300); }
   titleEl.textContent = t.title;
   titleEl.classList.add('fade-in');
+  await wait(200);
+  renderGenresThemes(genresEl, t);
+  await wait(200);
   if (t.nombreStreaming && t.nombreStreaming !== t.title) {
     streamEl.textContent = 'En streaming: ' + t.nombreStreaming;
     streamEl.classList.add('fade-in');
   }
   platEl.innerHTML = platformChipsHtml(t.plataforma) + `<span class="plat-eps">${t.eps} eps</span>`;
   platEl.classList.add('fade-in');
-  await wait(200);
-  if (t.generos) {
-    genresEl.innerHTML = t.generos.split(',').map(g => `<span class="tag-genre">${esc(g.trim())}</span>`).join('');
-    genresEl.classList.add('fade-in');
-  }
-  if (t.temas) {
-    themesEl.innerHTML = t.temas.split(',').map(x => `<span class="tag-theme">${esc(x.trim())}</span>`).join('');
-    themesEl.classList.add('fade-in');
-  }
   if (t.sinopsis) {
     sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)}</div>
       <button type="button" class="card-sinopsis-toggle" id="rvSinopsisToggle">Ver más</button>`;
@@ -614,7 +678,7 @@ function disableAllActionButtons(disabled) {
 // Boton "Elegir siguiente": gira el dado, calcula el pick con drawNext(),
 // lo muestra, y deja los botones Confirmar/Buscar de nuevo listos.
 async function startDrawNormal() {
-  document.getElementById('header').scrollIntoView({ behavior: "smooth"});
+  window.scrollTo(0, 0);
   disableAllActionButtons(true);
   document.getElementById('normalRow').classList.add('hidden');
   document.getElementById('confirmRow').classList.add('hidden');
@@ -679,7 +743,7 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
 // pidio voluntariamente via boton Cartoon o un pill pendiente (ahi NO
 // toca el ciclo para nada).
 async function startDrawExtra(cat, fromGate) {
-  document.getElementById('header').scrollIntoView({ behavior: "smooth"});
+  window.scrollTo(0, 0);
   disableAllActionButtons(true);
   state.extra = { category: cat, fromGate: !!fromGate };
   document.getElementById('gateBox').classList.add('hidden');
@@ -779,6 +843,16 @@ function renderPendingPills() {
 //    bloque van en un color neutro.
 // 3) Bolsa caliente de Clasica: cuantos Excelente/Buena/Normal reales quedan sin
 //    usar en la bolsa completa (dura muchos mazos, se ve aparte del mazo actual).
+// Item 3: el contenido de Modo Desarrollador arranca colapsado -- solo el
+// encabezado (toggle) se ve hasta que se toca, asi prender Modo Desarrollador
+// no empuja el resto de la pantalla hacia abajo de entrada.
+document.getElementById('devPanelHeader').addEventListener('click', () => {
+  const body = document.getElementById('devPanelBody');
+  const caret = document.getElementById('devPanelCaret');
+  body.classList.toggle('hidden');
+  caret.classList.toggle('open', !body.classList.contains('hidden'));
+});
+
 function renderDevPanel() {
   const panel = document.getElementById('devPanel');
   if (!state.devMode) { panel.classList.add('hidden'); return; }
@@ -877,6 +951,14 @@ document.getElementById('qvToggle').addEventListener('click', () => {
   const isHidden = drawer.classList.contains('hidden');
   drawer.classList.toggle('hidden');
   document.getElementById('qvToggle').textContent = isHidden ? 'QUIERO VER ▾' : 'QUIERO VER ▸';
+});
+document.addEventListener('click', (e) => {
+  const drawer = document.getElementById('qvDrawer');
+  const toggleBtn = document.getElementById('qvToggle');
+  if (!drawer.classList.contains('hidden') && !drawer.contains(e.target) && e.target !== toggleBtn) {
+    drawer.classList.add('hidden');
+    toggleBtn.textContent = 'QUIERO VER ▸';
+  }
 });
 
 // ============ RENDER GENERAL DE LA VISTA CICLO ============
