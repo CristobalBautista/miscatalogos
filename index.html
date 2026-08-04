@@ -54,7 +54,7 @@
 
   <!-- ANIME landing -->
   <div id="view-anime" class="hidden">
-    <div class="back" id="backHomeFromAnime">← Inicio</div>
+    <div class="back" id="backHomeFromAnime">‹ INICIO</div>
     <div class="header"><h1>ANIME</h1></div>
 
     <div class="tri-btn-row">
@@ -70,7 +70,7 @@
     <div class="hist-table-wrap">
       <table class="hist-table" id="histTable">
         <thead><tr>
-          <th class="col-img">Imagen</th>
+          <th class="col-img"></th>
           <th>Nombre</th>
           <th>Era</th>
           <th>Tipo</th>
@@ -92,7 +92,7 @@
 
   <!-- LISTA COMPLETA -->
   <div id="view-lista" class="hidden">
-    <div class="back" id="backAnimeFromLista">← ANIME</div>
+    <div class="back" id="backAnimeFromLista">‹ ANIME</div>
     <div class="header"><h1>Lista Completa</h1></div>
     <div class="nt-hint">Toca cualquier título para elegirlo como siguiente ahora mismo.</div>
     <div class="lista-filter-row">
@@ -119,7 +119,7 @@
 
   <!-- NUEVAS TEMPORADAS -->
   <div id="view-nt" class="hidden">
-    <div class="back" id="backAnimeFromNT">← ANIME</div>
+    <div class="back" id="backAnimeFromNT">‹ ANIME</div>
     <div class="header"><h1>Nuevas Temporadas</h1></div>
     <div class="nt-hint">Toca la que quieras ver ahora.</div>
     <div class="nt-grid" id="ntGrid"></div>
@@ -127,47 +127,16 @@
 
   <!-- CICLO -->
   <div id="view-ciclo" class="hidden">
-    <div class="back" id="backAnimeFromCiclo">← ANIME</div>
-    <div class="header">
+    <div class="header header-with-back">
+      <div class="back" id="backAnimeFromCiclo">‹ ANIME</div>
       <h1>Ruleta de Anime</h1>
     </div>
 
-    <div id="devPanel" class="dev-panel hidden">
-      <button type="button" class="dev-panel-header" id="devPanelHeader">
-        <span>🛠 Modo Desarrollador</span>
-        <span class="dev-panel-caret" id="devPanelCaret">▸</span>
-      </button>
-      <div class="dev-panel-body hidden" id="devPanelBody">
-        <div class="dev-panel-title">Cupos del ciclo</div>
-        <div class="dev-stats-row">
-          <div class="dev-stat"><div class="dev-stat-num" id="statPos">0/18</div><div class="dev-stat-label">Ciclo</div></div>
-          <div class="dev-stat"><div class="dev-stat-num" id="statEmo">0/5</div><div class="dev-stat-label">Emotional</div></div>
-          <div class="dev-stat"><div class="dev-stat-num" id="statCycleN">1</div><div class="dev-stat-label">N° ciclo</div></div>
-        </div>
-        <div class="dev-era-block" id="devEraBlock"></div>
-
-        <div class="dev-panel-title" style="margin:16px 0 8px;">Colores (prueba en vivo)</div>
-        <div class="dev-slider-row"><label>Dorada</label><input type="range" min="0" max="100" id="sliderDorada" class="dev-slider"></div>
-        <div class="dev-slider-row"><label>Clásica</label><input type="range" min="0" max="100" id="sliderClasica" class="dev-slider"></div>
-        <div class="dev-slider-row"><label>Excelente</label><input type="range" min="0" max="100" id="sliderExcelente" class="dev-slider"></div>
-        <div class="dev-slider-row"><label>Buena</label><input type="range" min="0" max="100" id="sliderBuena" class="dev-slider"></div>
-        <div class="dev-slider-row"><label>Normal</label><input type="range" min="0" max="100" id="sliderNormal" class="dev-slider"></div>
-        <button type="button" class="btn-secondary" id="recomendarColoresBtn" style="width:100%;margin-top:8px;">✨ Usar colores recomendados</button>
-
-        <div class="toggle-row" style="margin-top:14px;margin-bottom:0;">
-          <span>Géneros/temas como tags</span>
-          <label class="switch">
-            <input type="checkbox" id="tagStyleToggle" checked>
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <button type="button" class="btn-secondary" id="resetStateBtn" style="width:100%;margin-top:14px;">↺ Reiniciar estado (prueba)</button>
-      </div>
-    </div>
-
     <div id="filterPanel" class="hidden">
-      <button class="qv-toggle" id="qvToggle">QUIERO VER ▸</button>
+      <div class="qv-dev-row">
+        <button class="qv-toggle" id="qvToggle">QUIERO VER ▸</button>
+        <button class="qv-toggle dev-toggle-btn hidden" id="devToggle">DEV MODE ▸</button>
+      </div>
       <div class="qv-drawer hidden" id="qvDrawer">
         <div class="fp-group-label">Era</div>
         <div class="fp-pill-row">
@@ -189,6 +158,35 @@
           <button class="fp-pill" data-group="genero" data-value="Romance">Romance</button>
           <button class="fp-pill" data-group="genero" data-value="Suspenso">Suspenso</button>
         </div>
+      </div>
+
+      <div class="dev-panel qv-drawer hidden" id="devPanel">
+        <div class="dev-panel-title">Cupos del ciclo</div>
+        <div class="dev-stats-row">
+          <div class="dev-stat"><div class="dev-stat-num" id="statPos">0/18</div><div class="dev-stat-label">Ciclo</div></div>
+          <div class="dev-stat"><div class="dev-stat-num" id="statEmo">0/5</div><div class="dev-stat-label">Emotional</div></div>
+          <div class="dev-stat"><div class="dev-stat-num" id="statCycleN">1</div><div class="dev-stat-label">N° ciclo</div></div>
+        </div>
+        <div class="dev-era-block" id="devEraBlock"></div>
+
+        <div class="dev-panel-title" style="margin:16px 0 8px;">Colores (prueba en vivo)</div>
+        <div class="dev-slider-row"><label>Dorada</label><input type="range" min="0" max="100" id="sliderDorada" class="dev-slider"><span class="dev-color-name" id="nameDorada"></span></div>
+        <div class="dev-slider-row"><label>Clásica</label><input type="range" min="0" max="100" id="sliderClasica" class="dev-slider"><span class="dev-color-name" id="nameClasica"></span></div>
+        <div class="dev-slider-row"><label>Excelente</label><input type="range" min="0" max="100" id="sliderExcelente" class="dev-slider"><span class="dev-color-name" id="nameExcelente"></span></div>
+        <div class="dev-slider-row"><label>Buena</label><input type="range" min="0" max="100" id="sliderBuena" class="dev-slider"><span class="dev-color-name" id="nameBuena"></span></div>
+        <div class="dev-slider-row"><label>Normal</label><input type="range" min="0" max="100" id="sliderNormal" class="dev-slider"><span class="dev-color-name" id="nameNormal"></span></div>
+        <div class="dev-slider-row"><label>Tags</label><input type="range" min="0" max="100" id="sliderTags" class="dev-slider"><span class="dev-color-name" id="nameTags"></span></div>
+        <button type="button" class="btn-secondary" id="recomendarColoresBtn" style="width:100%;margin-top:8px;">✨ Colores recomendados</button>
+
+        <div class="toggle-row" style="margin-top:14px;margin-bottom:0;">
+          <span>Géneros/temas como tags</span>
+          <label class="switch">
+            <input type="checkbox" id="tagStyleToggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <button type="button" class="btn-secondary" id="resetStateBtn" style="width:100%;margin-top:14px;">↺ Reiniciar estado (prueba)</button>
       </div>
     </div>
 

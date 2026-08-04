@@ -18,8 +18,13 @@ function platformChipsHtml(plat) {
       <span>${k[0].toUpperCase() + k.slice(1)}</span>
     </span>`).join('');
 }
-
-
+// Igual que platformChipsHtml pero en texto plano (para modales que usan
+// textContent, como el de confirmar plataforma al elegir).
+function platformPlainNames(plat) {
+  const keys = detectPlatformKeys(plat);
+  if (keys.length === 0) return plat || 'Sin dato';
+  return keys.map(k => k[0].toUpperCase() + k.slice(1)).join(', ');
+}
 
 // ============ ARRANQUE DE LA APP ============
 // Esto es lo primero que corre (ver el final del archivo). Carga el
@@ -47,8 +52,6 @@ async function loadState() {
   render();
 }
 
-
-
 // ============ TEMA DE COLOR ============
 function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
@@ -71,41 +74,58 @@ function ntAvailableList() { return NUEVAS_TEMP.filter(nt => nt.finished && !sta
 
 // ============ MODO DESARROLLADOR: deslizadores de color (solo visual, no
 // persiste) ============
-// Cada deslizador va de 0 a 100. Para Clasica/Excelente/Buena/Normal: 0-3 es
-// gris (desaturado, pedido explicitamente para Clasica), 4-100 recorre toda
-// la rueda de color (matiz 0-360). Para Dorada: no recorre toda la rueda
-// (pedido explicito: "dejarlo dorado", solo variar cuanto), varia
-// saturacion/luminosidad dentro del tono dorado fijo. El valor final se deja
+// Cada deslizador va de 0 a 100. 0-3 es gris (desaturado); 4-100 recorre
+// toda la rueda de color (matiz 0-360, resolucion de 1 grado -- practicamente
+// continuo, ~350 tonos distintos). Dorada ya NO esta restringida a un solo
+// tono -- usa la misma rueda completa que el resto. El valor final se deja
 // a mano en styles.css despues de decidir -- esto es solo para probar en
 // vivo, por eso no se guarda en localStorage.
-const GOLD_HUE = 42;
 function hueToColor(value, theme) {
   if (value < 4) return theme === 'light' ? 'hsl(0,0%,35%)' : 'hsl(0,0%,60%)';
   const hue = ((value - 4) / 96) * 360;
   const light = theme === 'light' ? 40 : 62;
-  return `hsl(${hue.toFixed(0)}, 60%, ${light}%)`;
+  return `hsl(${hue.toFixed(0)}, 62%, ${light}%)`;
 }
-function doradaToColor(value, theme) {
-  const sat = 25 + (value / 100) * 55;
-  const light = theme === 'light' ? (28 + (value / 100) * 16) : (52 + (value / 100) * 18);
-  return `hsl(${GOLD_HUE}, ${sat.toFixed(0)}%, ${light.toFixed(0)}%)`;
+// Nombra el color actual del deslizador por rango de matiz, para no tener
+// que adivinar mirando el numero crudo -- si te movés fuera del rango
+// cambia el nombre solo.
+function hueColorName(value) {
+  if (value < 4) return 'Gris';
+  const hue = ((value - 4) / 96) * 360;
+  if (hue < 15 || hue >= 345) return 'Rojo';
+  if (hue < 40) return 'Naranja';
+  if (hue < 65) return 'Dorado / Amarillo';
+  if (hue < 95) return 'Verde lima';
+  if (hue < 155) return 'Verde';
+  if (hue < 185) return 'Turquesa';
+  if (hue < 220) return 'Celeste';
+  if (hue < 250) return 'Azul';
+  if (hue < 280) return 'Violeta';
+  if (hue < 310) return 'Morado';
+  if (hue < 330) return 'Magenta';
+  return 'Rosa';
 }
 // Recomendados: matices bien separados entre si para que Era y Tipo nunca
 // se vean parecidos en el marco del poster (que combina ambos en gradiente).
-// Dorada ~42 (fijo), Clasica ~304 (morado-vino), Excelente ~357 (rojo),
-// Buena ~214 (azul), Normal = gris -- Moderna se deja fija, sin deslizador.
+// Dorada ~42 (dorado), Clasica ~304 (morado-vino), Excelente ~357 (rojo),
+// Buena ~214 (azul), Normal = gris, Tags ~264 (morado, igual al acento
+// actual) -- Moderna se deja fija, sin deslizador.
 const COLOR_SLIDERS = {
-  dorada: { varName: '--dorada', fn: doradaToColor, recommended: 75, value: 75 },
+  dorada: { varName: '--dorada', fn: hueToColor, recommended: 15, value: 15 },
   clasica: { varName: '--clasica', fn: hueToColor, recommended: 84, value: 84 },
   excelente: { varName: '--band-excelente', fn: hueToColor, recommended: 98, value: 98 },
   buena: { varName: '--band-buena', fn: hueToColor, recommended: 60, value: 60 },
   normal: { varName: '--band-normal', fn: hueToColor, recommended: 0, value: 0 },
+  tags: { varName: '--tag-color', fn: hueToColor, recommended: 74, value: 74 },
 };
 function sliderElFor(key) { return document.getElementById('slider' + key.charAt(0).toUpperCase() + key.slice(1)); }
+function nameElFor(key) { return document.getElementById('name' + key.charAt(0).toUpperCase() + key.slice(1)); }
 function applyColorSlider(key, value) {
   const cfg = COLOR_SLIDERS[key];
   cfg.value = value;
   document.documentElement.style.setProperty(cfg.varName, cfg.fn(value, state.theme));
+  const nameEl = nameElFor(key);
+  if (nameEl) nameEl.textContent = hueColorName(value);
 }
 function reapplyColorSliders() {
   Object.keys(COLOR_SLIDERS).forEach(key => applyColorSlider(key, COLOR_SLIDERS[key].value));
@@ -373,13 +393,27 @@ function onListaCardTap(item) {
       title: 'Nueva temporada',
       message: 'Está estrenando o falta estrenar una nueva temporada. ¿Quieres arrancar aun así?',
       buttons: [
-        { label: 'Sí, arrancar', action: () => commitFromLista(item) },
+        { label: 'Sí, arrancar', action: () => confirmPlatformThen(item) },
         { label: 'Cancelar' }
       ]
     });
     return;
   }
-  commitFromLista(item);
+  confirmPlatformThen(item);
+}
+// Antes de confirmar de verdad, muestra donde esta disponible para verla
+// (plataforma) y pide un OK explicito -- "al momento de seleccionar" (item 7
+// de la ultima ronda). item.plataforma puede venir vacio en Larga/Adulto/
+// Repetir sin dato cargado; en ese caso el mensaje lo aclara.
+function confirmPlatformThen(item) {
+  showInfoModal({
+    title: item.title,
+    message: item.plataforma ? 'Disponible en: ' + platformPlainNames(item.plataforma) : 'Sin plataforma registrada.',
+    buttons: [
+      { label: 'OK, elegir esta', action: () => commitFromLista(item) },
+      { label: 'Cancelar' }
+    ]
+  });
 }
 
 // Confirma la seleccion de un item de Lista Completa, ya sea de Era
@@ -529,7 +563,6 @@ function setupCardSkeleton() {
     <div class="card-title" id="rvTitle"></div>
     <div class="card-genres" id="rvGenres"></div>
     <div class="card-info-row" id="rvInfoRow">
-      <div class="card-streaming-name" id="rvStreamName"></div>
       <div class="card-plat" id="rvPlat"></div>
     </div>
     <div class="card-sinopsis-wrap" id="rvSinopsisWrap"></div>
@@ -560,10 +593,15 @@ function renderGenresThemes(container, t) {
     ...(t.generos ? t.generos.split(',') : []),
     ...(t.temas ? t.temas.split(',') : [])
   ].map(s => s.trim()).filter(Boolean);
-  if (all.length === 0) return;
-  container.innerHTML = genreTagStyleOn
-    ? all.map(g => `<span class="tag-genre">${esc(g)}</span>`).join('')
-    : `<span class="card-genres-plain">${all.map(g => esc(g)).join(' · ')}</span>`;
+  const epsHtml = `<span class="card-eps-plain">${t.eps} eps</span>`;
+  if (all.length === 0) {
+    container.innerHTML = epsHtml;
+  } else {
+    const genresHtml = genreTagStyleOn
+      ? all.map(g => `<span class="tag-genre">${esc(g)}</span>`).join('')
+      : `<span class="card-genres-plain">${all.map(g => esc(g)).join(' · ')}</span>`;
+    container.innerHTML = epsHtml + `<span class="card-eps-plain">•</span>` + genresHtml;
+  }
   container.classList.add('fade-in');
 }
 async function revealPickNormal(pick) {
@@ -574,7 +612,6 @@ async function revealPickNormal(pick) {
   const tags = document.getElementById('rvTags');
   const titleEl = document.getElementById('rvTitle');
   const genresEl = document.getElementById('rvGenres');
-  const streamEl = document.getElementById('rvStreamName');
   const platEl = document.getElementById('rvPlat');
   const sinopsisWrap = document.getElementById('rvSinopsisWrap');
 
@@ -594,11 +631,7 @@ async function revealPickNormal(pick) {
   await wait(200);
   renderGenresThemes(genresEl, t);
   await wait(200);
-  if (t.nombreStreaming && t.nombreStreaming !== t.title) {
-    streamEl.textContent = 'En streaming: ' + t.nombreStreaming;
-    streamEl.classList.add('fade-in');
-  }
-  platEl.innerHTML = platformChipsHtml(t.plataforma) + `<span class="plat-eps">${t.eps} eps</span>`;
+  platEl.innerHTML = platformChipsHtml(t.plataforma);
   platEl.classList.add('fade-in');
   if (t.sinopsis) {
     sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)}</div>
@@ -843,20 +876,32 @@ function renderPendingPills() {
 //    bloque van en un color neutro.
 // 3) Bolsa caliente de Clasica: cuantos Excelente/Buena/Normal reales quedan sin
 //    usar en la bolsa completa (dura muchos mazos, se ve aparte del mazo actual).
-// Item 3: el contenido de Modo Desarrollador arranca colapsado -- solo el
-// encabezado (toggle) se ve hasta que se toca, asi prender Modo Desarrollador
-// no empuja el resto de la pantalla hacia abajo de entrada.
-document.getElementById('devPanelHeader').addEventListener('click', () => {
-  const body = document.getElementById('devPanelBody');
-  const caret = document.getElementById('devPanelCaret');
-  body.classList.toggle('hidden');
-  caret.classList.toggle('open', !body.classList.contains('hidden'));
+// Item 1: DEV MODE ahora es un drawer flotante (igual patron que QUIERO
+// VER/Lista Completa) -- no empuja el resto de la pantalla. El boton solo
+// se muestra si Modo Desarrollador esta prendido en Configuracion; tocarlo
+// abre/cierra el drawer, y tocar afuera lo cierra (y cierra QUIERO VER si
+// estaba abierto, para que no queden los 2 drawers superpuestos).
+document.getElementById('devToggle').addEventListener('click', () => {
+  const panel = document.getElementById('devPanel');
+  const isHidden = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden');
+  document.getElementById('devToggle').textContent = isHidden ? 'DEV MODE ▾' : 'DEV MODE ▸';
+  document.getElementById('qvDrawer').classList.add('hidden');
+  document.getElementById('qvToggle').textContent = 'QUIERO VER ▸';
+});
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('devPanel');
+  const toggleBtn = document.getElementById('devToggle');
+  if (!panel.classList.contains('hidden') && !panel.contains(e.target) && e.target !== toggleBtn) {
+    panel.classList.add('hidden');
+    toggleBtn.textContent = 'DEV MODE ▸';
+  }
 });
 
 function renderDevPanel() {
-  const panel = document.getElementById('devPanel');
-  if (!state.devMode) { panel.classList.add('hidden'); return; }
-  panel.classList.remove('hidden');
+  const toggleBtn = document.getElementById('devToggle');
+  toggleBtn.classList.toggle('hidden', !state.devMode);
+  if (!state.devMode) { document.getElementById('devPanel').classList.add('hidden'); return; }
   const block = document.getElementById('devEraBlock');
 
   function tokensFor(era, band) {
@@ -951,6 +996,8 @@ document.getElementById('qvToggle').addEventListener('click', () => {
   const isHidden = drawer.classList.contains('hidden');
   drawer.classList.toggle('hidden');
   document.getElementById('qvToggle').textContent = isHidden ? 'QUIERO VER ▾' : 'QUIERO VER ▸';
+  document.getElementById('devPanel').classList.add('hidden');
+  document.getElementById('devToggle').textContent = 'DEV MODE ▸';
 });
 document.addEventListener('click', (e) => {
   const drawer = document.getElementById('qvDrawer');
