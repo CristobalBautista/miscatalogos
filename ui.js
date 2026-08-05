@@ -48,7 +48,8 @@ async function loadState() {
   } catch (e) { console.error(e); }
   applyTheme(state.theme);
   document.getElementById('view-loading').classList.add('hidden');
-  showView('home');
+  history.replaceState({ view: 'home' }, '', '#home');
+  showView('home', false);
   render();
 }
 
@@ -74,21 +75,34 @@ function ntAvailableList() { return NUEVAS_TEMP.filter(nt => nt.finished && !sta
 
 // ============ MODO DESARROLLADOR: deslizadores de color (solo visual, no
 // persiste) ============
-// Cada deslizador va de 0 a 100. 0-3 es gris (desaturado); 4-100 recorre
-// toda la rueda de color (matiz 0-360, resolucion de 1 grado -- practicamente
-// continuo, ~350 tonos distintos). Dorada ya NO esta restringida a un solo
-// tono -- usa la misma rueda completa que el resto. El valor final se deja
-// a mano en styles.css despues de decidir -- esto es solo para probar en
-// vivo, por eso no se guarda en localStorage.
+//
+// COMO FUNCIONA (para poder editarlo a mano sin depender de mi):
+// Cada color se arma en formato HSL: hsl(matiz, saturacion%, luminosidad%)
+//   - Matiz (0-360): la posicion en el circulo de colores. Es LO UNICO que
+//     mueve el deslizador. 0=rojo, 60=amarillo, 120=verde, 180=turquesa,
+//     240=azul, 300=magenta, 360=rojo de nuevo.
+//   - Saturacion (0-100%): que tan "vivo"/puro es el color. 100%=caricatura,
+//     0%=gris puro sin importar el matiz. Fija en HUE_SAT abajo.
+//   - Luminosidad (0-100%): que tan claro u oscuro. 50% es el color mas
+//     puro de ese matiz. ACA es donde viven el cafe, el vino oscuro, el
+//     verde olivo -- todos son matices normales con luminosidad BAJA
+//     (~20-30%). Fija en HUE_LIGHT_DARK/HUE_LIGHT_LIGHT abajo.
+// Como el deslizador solo mueve el matiz (para que sea 1 solo control, no
+// 3), la luminosidad/saturacion quedan fijas -- por eso nunca aparece un
+// cafe con el deslizador solo. Si queres agregar esos tonos: bajá
+// HUE_LIGHT_DARK (ej. de 62 a 30) y vas a ver cafes/vinos/olivos en todo el
+// circulo en vez de los tonos "vivos" actuales. Podes hacer esto por
+// separado para cada color si queres variedad (cada slider ya usa su propia
+// funcion "fn", basta con darle su propia luminosidad fija).
+const HUE_SAT = 62;          // saturacion de todos los sliders de matiz (0-100)
+const HUE_LIGHT_DARK = 52;   // luminosidad en tema oscuro -- bajar = mas oscuro/cafe/vino, subir = mas pastel
+const HUE_LIGHT_LIGHT = 40;  // luminosidad en tema claro (mismo criterio)
 function hueToColor(value, theme) {
   if (value < 4) return theme === 'light' ? 'hsl(0,0%,35%)' : 'hsl(0,0%,60%)';
   const hue = ((value - 4) / 96) * 360;
-  const light = theme === 'light' ? 40 : 62;
-  return `hsl(${hue.toFixed(0)}, 62%, ${light}%)`;
+  const light = theme === 'light' ? HUE_LIGHT_LIGHT : HUE_LIGHT_DARK;
+  return `hsl(${hue.toFixed(0)}, ${HUE_SAT}%, ${light}%)`;
 }
-// Nombra el color actual del deslizador por rango de matiz, para no tener
-// que adivinar mirando el numero crudo -- si te movés fuera del rango
-// cambia el nombre solo.
 function hueColorName(value) {
   if (value < 4) return 'Gris';
   const hue = ((value - 4) / 96) * 360;
@@ -105,27 +119,44 @@ function hueColorName(value) {
   if (hue < 330) return 'Magenta';
   return 'Rosa';
 }
+// Dorada es especial: NO recorre el circulo completo (pedido explicito), es
+// un unico matiz fijo (42=dorado) donde el deslizador mueve saturacion y
+// luminosidad juntas -- "muy dorado" (vivo, saturado) a "poco dorado"
+// (palido, casi gris amarillento).
+const DORADA_HUE = 42;
+function doradaToColor(value, theme) {
+  const sat = 25 + (value / 100) * 60;
+  const light = theme === 'light' ? (26 + (value / 100) * 18) : (46 + (value / 100) * 22);
+  return `hsl(${DORADA_HUE}, ${sat.toFixed(0)}%, ${light.toFixed(0)}%)`;
+}
+function doradaColorName(value) {
+  if (value < 25) return 'Poco dorado';
+  if (value < 55) return 'Dorado suave';
+  if (value < 80) return 'Dorado';
+  return 'Muy dorado';
+}
 // Recomendados: matices bien separados entre si para que Era y Tipo nunca
 // se vean parecidos en el marco del poster (que combina ambos en gradiente).
-// Dorada ~42 (dorado), Clasica ~304 (morado-vino), Excelente ~357 (rojo),
+// Dorada bien dorada, Clasica ~304 (morado-vino), Excelente ~357 (rojo),
 // Buena ~214 (azul), Normal = gris, Tags ~264 (morado, igual al acento
 // actual) -- Moderna se deja fija, sin deslizador.
 const COLOR_SLIDERS = {
-  dorada: { varName: '--dorada', fn: hueToColor, recommended: 15, value: 15 },
-  clasica: { varName: '--clasica', fn: hueToColor, recommended: 84, value: 84 },
-  excelente: { varName: '--band-excelente', fn: hueToColor, recommended: 98, value: 98 },
-  buena: { varName: '--band-buena', fn: hueToColor, recommended: 60, value: 60 },
-  normal: { varName: '--band-normal', fn: hueToColor, recommended: 0, value: 0 },
-  tags: { varName: '--tag-color', fn: hueToColor, recommended: 74, value: 74 },
+  dorada: { varName: '--dorada', fn: doradaToColor, nameFn: doradaColorName, recommended: 70, value: 70 },
+  clasica: { varName: '--clasica', fn: hueToColor, nameFn: hueColorName, recommended: 84, value: 84 },
+  excelente: { varName: '--band-excelente', fn: hueToColor, nameFn: hueColorName, recommended: 98, value: 98 },
+  buena: { varName: '--band-buena', fn: hueToColor, nameFn: hueColorName, recommended: 60, value: 60 },
+  normal: { varName: '--band-normal', fn: hueToColor, nameFn: hueColorName, recommended: 0, value: 0 },
+  tags: { varName: '--tag-color', fn: hueToColor, nameFn: hueColorName, recommended: 74, value: 74 },
 };
 function sliderElFor(key) { return document.getElementById('slider' + key.charAt(0).toUpperCase() + key.slice(1)); }
 function nameElFor(key) { return document.getElementById('name' + key.charAt(0).toUpperCase() + key.slice(1)); }
 function applyColorSlider(key, value) {
   const cfg = COLOR_SLIDERS[key];
   cfg.value = value;
-  document.documentElement.style.setProperty(cfg.varName, cfg.fn(value, state.theme));
+  const cssColor = cfg.fn(value, state.theme);
+  document.documentElement.style.setProperty(cfg.varName, cssColor);
   const nameEl = nameElFor(key);
-  if (nameEl) nameEl.textContent = hueColorName(value);
+  if (nameEl) nameEl.textContent = `${cfg.nameFn(value)} — ${cssColor}`;
 }
 function reapplyColorSliders() {
   Object.keys(COLOR_SLIDERS).forEach(key => applyColorSlider(key, COLOR_SLIDERS[key].value));
@@ -144,13 +175,6 @@ document.getElementById('recomendarColoresBtn').addEventListener('click', () => 
   toast('Colores recomendados aplicados');
 });
 
-// Item 6: on/off del estilo "tag" (pastilla con color) para generos/temas en
-// la tarjeta de seleccion -- apagado = texto plano estilo MAL/Trakt. Variable
-// de sesion nomas (no persiste), la lee revealPickNormal() en cada tirada.
-let genreTagStyleOn = true;
-document.getElementById('tagStyleToggle').addEventListener('change', (e) => {
-  genreTagStyleOn = e.target.checked;
-});
 
 
 // ============ NAVEGACION ENTRE VISTAS ============
@@ -168,7 +192,7 @@ async function fadeToView(name) {
   wrap.style.opacity = '1';
 }
 
-function showView(name) {
+function showView(name, pushHistory = true) {
   state.view = name;
   ['home', 'anime', 'nt', 'ciclo', 'lista'].forEach(v => {
     document.getElementById('view-' + v).classList.toggle('hidden', v !== name);
@@ -182,7 +206,20 @@ function showView(name) {
     render();
   }
   saveState();
+  // Boton Atras de Android / navegador: cada vista nueva empuja un estado al
+  // historial. Cuando el usuario usa el boton fisico Atras (o el gesto en
+  // Android), el navegador dispara "popstate" con el estado anterior en vez
+  // de cerrar la app -- lo escuchamos mas abajo y solo hacemos render (sin
+  // volver a empujar, para no crear un loop). pushHistory=false es lo que
+  // usa ese listener para evitar el loop.
+  if (pushHistory && (!history.state || history.state.view !== name)) {
+    history.pushState({ view: name }, '', '#' + name);
+  }
 }
+window.addEventListener('popstate', (e) => {
+  const v = (e.state && e.state.view) || 'home';
+  showView(v, false);
+});
 document.getElementById('goAnime').addEventListener('click', () => showView('anime'));
 document.getElementById('goLive').addEventListener('click', () => toast('Próximamente'));
 document.getElementById('goMovies').addEventListener('click', () => toast('Próximamente'));
@@ -316,23 +353,16 @@ function renderListaCompleta() {
     return;
   }
   grid.innerHTML = items.map((a, idx) => {
-    const note = a.available ? platformExtraNote(a.plataforma) : '';
     const posterHtml = a.poster
       ? `<img src="${esc(a.poster)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🎬'}))">`
       : '🎬';
-    const catChip = a.era ? '' : `<span class="lista-card-cat">${esc(a.categoria)}</span>`;
-    const unavailTag = a.available ? '' : `<span class="lista-unavail-tag">No disponible</span>`;
     return `
     <button class="lista-card${a.available ? '' : ' disabled'}" data-idx="${idx}">
       <div class="lista-poster">
         ${posterHtml}
       </div>
       <div class="lista-card-body">
-        ${catChip}${unavailTag}
         <div class="lista-card-title">${esc(a.title)}</div>
-        <div class="lista-card-meta">${a.eps} eps</div>
-        <div class="lista-card-plat">${a.available ? platformChipsHtml(a.plataforma) : ''}</div>
-        ${note ? `<span class="lista-card-note">${esc(note)}</span>` : ''}
       </div>
     </button>`;
   }).join('');
@@ -539,32 +569,28 @@ function buildRevealHTML() {
 }
 async function playRevealAnimation() {
   const wrap = document.getElementById('diceWrap');
-  wrap.innerHTML = buildRevealHTML() + '<div class="reveal-label">Girando…</div>';
+  wrap.innerHTML = buildRevealHTML() + '<div class="reveal-label">BUSCANDO…</div>';
   wrap.style.display = 'flex';
   // pequeña espera para que el navegador registre el estado inicial antes de
   // animar -- si no, a veces la transicion no dispara.
   await wait(30);
-  await wait(1900);
+  await wait(2900);
   document.querySelectorAll('.anim-card').forEach(c => c.style.animation = 'none');
   await wait(300); // pausa visible antes de desaparecer
   wrap.style.display = 'none';
 }
 
-
 // ============ REVELADO DE LA TARJETA ============
 // Orden: Poster -> Era/Tipo/Emotional -> Nombre -> Generos+Temas (fusionados,
-// con o sin estilo tag segun genreTagStyleOn) -> Streaming+Plataforma+
-// Episodios (alineado a la izquierda) -> Sinopsis. Fundidos escalonados (no
-// todo de golpe), para que se sienta como una revelacion.
+// siempre texto plano) -> Sinopsis. Fundidos escalonados (no todo de golpe),
+// para que se sienta como una revelacion.
 function setupCardSkeleton() {
   document.getElementById('cardArea').innerHTML = `
     <div class="card-poster-frame" id="rvPosterFrame"><div class="card-poster" id="rvPoster"></div></div>
     <div class="card-tags" id="rvTags"></div>
     <div class="card-title" id="rvTitle"></div>
     <div class="card-genres" id="rvGenres"></div>
-    <div class="card-info-row" id="rvInfoRow">
-      <div class="card-plat" id="rvPlat"></div>
-    </div>
+    <div class="card-plat" id="rvPlat"></div>
     <div class="card-sinopsis-wrap" id="rvSinopsisWrap"></div>
   `;
 }
@@ -584,24 +610,21 @@ function posterFrameGradient(era, band) {
   const bandVar = '--band-' + (band || 'normal').toLowerCase();
   return `linear-gradient(135deg, var(${eraVar}), var(${bandVar}))`;
 }
-// Item 6: genero+tema fusionados en una sola lista, sin diferenciar cual es
-// cual. genreTagStyleOn decide si se ven como pastillas de color o como
-// texto plano separado por "·" (estilo MAL/Trakt) -- toggle en Modo
-// Desarrollador.
+// Item 3: generos+temas fusionados, SIEMPRE texto plano (ya no hay toggle de
+// pastillas). Los episodios van como texto normal pegado al inicio del mismo
+// parrafo (no en un contenedor flex aparte) para que el wrap sea natural:
+// "24 eps ·" nunca se mueve de la primera linea, y si hay muchos generos el
+// sobrante pasa solo a la siguiente linea -- en vez de que TODO el bloque de
+// generos salte de linea como pasaba con el flex+span-unico de antes.
 function renderGenresThemes(container, t) {
   const all = [
     ...(t.generos ? t.generos.split(',') : []),
     ...(t.temas ? t.temas.split(',') : [])
   ].map(s => s.trim()).filter(Boolean);
   const epsHtml = `<span class="card-eps-plain">${t.eps} eps</span>`;
-  if (all.length === 0) {
-    container.innerHTML = epsHtml;
-  } else {
-    const genresHtml = genreTagStyleOn
-      ? all.map(g => `<span class="tag-genre">${esc(g)}</span>`).join('')
-      : `<span class="card-genres-plain">${all.map(g => esc(g)).join(' · ')}</span>`;
-    container.innerHTML = epsHtml + `<span class="card-eps-plain">•</span>` + genresHtml;
-  }
+  container.innerHTML = all.length > 0
+    ? epsHtml + ` <span class="card-genres-plain">· ${all.map(g => esc(g)).join(' · ')}</span>`
+    : epsHtml;
   container.classList.add('fade-in');
 }
 async function revealPickNormal(pick) {
@@ -612,7 +635,6 @@ async function revealPickNormal(pick) {
   const tags = document.getElementById('rvTags');
   const titleEl = document.getElementById('rvTitle');
   const genresEl = document.getElementById('rvGenres');
-  const platEl = document.getElementById('rvPlat');
   const sinopsisWrap = document.getElementById('rvSinopsisWrap');
 
   posterFrame.style.background = posterFrameGradient(pick.token.era, pick.token.band);
@@ -630,9 +652,6 @@ async function revealPickNormal(pick) {
   titleEl.classList.add('fade-in');
   await wait(200);
   renderGenresThemes(genresEl, t);
-  await wait(200);
-  platEl.innerHTML = platformChipsHtml(t.plataforma);
-  platEl.classList.add('fade-in');
   if (t.sinopsis) {
     sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)}</div>
       <button type="button" class="card-sinopsis-toggle" id="rvSinopsisToggle">Ver más</button>`;
@@ -717,9 +736,12 @@ async function startDrawNormal() {
   document.getElementById('confirmRow').classList.add('hidden');
   document.getElementById('gateBox').classList.add('hidden');
   const cardArea = document.getElementById('cardArea');
+  cardArea.style.transition = 'opacity .25s';
   cardArea.style.opacity = '0';
-  await playRevealAnimation();
+  await wait(260); // esperar el fade completo ANTES de tocar el contenido/altura
+  cardArea.innerHTML = '<div class="card-empty"></div>'; // colapsa a altura minima ya invisible, no empuja nada
   cardArea.style.opacity = '1';
+  await playRevealAnimation();
 
   let result = drawNext();
   if (!result) {
@@ -785,9 +807,12 @@ async function startDrawExtra(cat, fromGate) {
   document.getElementById('confirmExtraRow').classList.add('hidden');
   document.getElementById('continueExtraRow').classList.add('hidden');
   const cardArea = document.getElementById('cardArea');
+  cardArea.style.transition = 'opacity .25s';
   cardArea.style.opacity = '0';
-  await playRevealAnimation();
+  await wait(260);
+  cardArea.innerHTML = '<div class="card-empty"></div>';
   cardArea.style.opacity = '1';
+  await playRevealAnimation();
 
   const item = drawExtra(cat);
   if (!item) { toast('Sin títulos en esta categoría'); render(); disableAllActionButtons(false); return; }
