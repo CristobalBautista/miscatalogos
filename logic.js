@@ -239,7 +239,8 @@ async function loadCatalog() {
         nombreStreaming: (r.Nombre_Streaming || '').trim(),
         sinopsis: (r.Sinopsis || '').trim(),
         generos: (r.Generos || '').trim(),
-        temas: (r.Temas || '').trim()
+        temas: (r.Temas || '').trim(),
+        nota: (r.Notas || '').trim()
       });
     } else if (cat === 'Larga') {
       largas.push({ title: r.Nombre, eps, emotional, plataforma: plat });

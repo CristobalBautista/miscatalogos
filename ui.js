@@ -56,7 +56,6 @@ async function loadState() {
 // ============ TEMA DE COLOR ============
 function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
-  reapplyColorSliders();
 }
 function renderThemeRow() {
   const row = document.getElementById('themeRow');
@@ -72,6 +71,13 @@ function renderThemeRow() {
 }
 
 function ntAvailableList() { return NUEVAS_TEMP.filter(nt => nt.finished && !state.seenNT.includes(nt.title)); }
+
+/* ============ MODO DESARROLLADOR: deslizadores de color -- COMENTADO ============
+   Colores ya definidos (ver :root/[data-theme=light] en styles.css). Se deja
+   todo este sistema comentado en vez de borrado para poder reactivarlo facil
+   el dia que se quiera volver a ajustar algun color -- solo hay que
+   descomentar este bloque Y el bloque correspondiente en index.html
+   (buscar "DESLIZADORES DE COLOR -- COMENTADO" ahi tambien).
 
 // ============ MODO DESARROLLADOR: deslizadores de color (solo visual, no
 // persiste) ============
@@ -95,7 +101,7 @@ function ntAvailableList() { return NUEVAS_TEMP.filter(nt => nt.finished && !sta
 // separado para cada color si queres variedad (cada slider ya usa su propia
 // funcion "fn", basta con darle su propia luminosidad fija).
 const HUE_SAT = 62;          // saturacion de todos los sliders de matiz (0-100)
-const HUE_LIGHT_DARK = 52;   // luminosidad en tema oscuro -- bajar = mas oscuro/cafe/vino, subir = mas pastel
+const HUE_LIGHT_DARK = 62;   // luminosidad en tema oscuro -- bajar = mas oscuro/cafe/vino, subir = mas pastel
 const HUE_LIGHT_LIGHT = 40;  // luminosidad en tema claro (mismo criterio)
 function hueToColor(value, theme) {
   if (value < 4) return theme === 'light' ? 'hsl(0,0%,35%)' : 'hsl(0,0%,60%)';
@@ -174,6 +180,8 @@ document.getElementById('recomendarColoresBtn').addEventListener('click', () => 
   });
   toast('Colores recomendados aplicados');
 });
+
+*/
 
 
 
@@ -309,7 +317,7 @@ function renderMiniHist() {
     <div class="mini-hist-item ${i === 0 ? 'latest' : ''}">
       <span class="mini-hist-dot ${h.era}"></span>
       <span class="mini-hist-title">${esc(h.title)}</span>
-      ${h.emotional ? '<span style="color:var(--emo); font-size:11px;">♥</span>' : ''}
+      ${h.emotional ? '<span class="mini-hist-heart">♥</span>' : ''}
     </div>
   `).join('');
 }
@@ -391,8 +399,9 @@ document.addEventListener('click', (e) => {
   const toggleBtn = document.getElementById('listaFilterToggle');
   if (!drawer.classList.contains('hidden') && !drawer.contains(e.target) && e.target !== toggleBtn) {
     drawer.classList.add('hidden');
+    e.stopPropagation(); // el primer toque afuera SOLO cierra -- no debe llegarle el click a la tarjeta de abajo
   }
-});
+}, true); // capture phase: corre ANTES que el click propio de la tarjeta (que esta en bubble phase)
 // Boton flotante "volver arriba": solo aparece cuando hay algo de scroll
 // hecho en la pestaña Lista Completa.
 window.addEventListener('scroll', () => {
@@ -557,28 +566,28 @@ async function selectNuevaTemp(nt) {
 // revelar el resultado real. Es puramente decorativo -- el resultado ya
 // se calcula con drawNext()/drawExtra() de logic.js, el dado solo genera
 // la pausa dramatica.
-// ---------------- animacion de revelado (solo "tarjetas girando" por ahora --
-// se sacaron ruleta/tragamonedas del selector, quedan de lado hasta mejorar
-// este estilo primero) ----------------
+// ---------------- animacion de revelado ("tarjetas girando" con signo de
+// interrogacion) ----------------
+// Vive DENTRO de #cardArea (ya no en un contenedor separado tipo diceWrap)
+// -- asi no hay 2 elementos distintos que se desplacen uno al otro cuando
+// aparece/desaparece, es el mismo espacio todo el tiempo.
+const REVEAL_MARKS = ['?', '？', '❔'];
 function buildRevealHTML() {
-  return `<div class="anim-cards">
-    <div class="anim-card c1"></div>
-    <div class="anim-card c2"></div>
-    <div class="anim-card c3"></div>
-  </div>`;
+  return `<div class="anim-cards-row" id="animCardsRow">` +
+    REVEAL_MARKS.map((m, i) => `<div class="anim-card-big" style="animation-delay:${i * -0.18}s"><span class="anim-card-q">${m}</span></div>`).join('') +
+    `</div>`;
 }
 async function playRevealAnimation() {
-  const wrap = document.getElementById('diceWrap');
-  wrap.innerHTML = buildRevealHTML() + '<div class="reveal-label">BUSCANDO…</div>';
-  wrap.style.display = 'flex';
-  // pequeña espera para que el navegador registre el estado inicial antes de
-  // animar -- si no, a veces la transicion no dispara.
-  await wait(30);
-  await wait(2900);
-  document.querySelectorAll('.anim-card').forEach(c => c.style.animation = 'none');
-  await wait(300); // pausa visible antes de desaparecer
-  wrap.style.display = 'none';
+  const cardArea = document.getElementById('cardArea');
+  cardArea.innerHTML = buildRevealHTML();
+  await wait(30); // que el navegador registre el estado inicial antes de animar
+  await wait(2000); // giro
+  document.getElementById('animCardsRow').classList.add('fade-out'); // 0.5s de fade-out -> 2.5s total
+  await wait(500);
+  cardArea.innerHTML = ''; // limpio -- setupCardSkeleton() arma el poster despues de esto
+  await wait(350); // pausa antes de que el poster empiece su propio fade-in (pedido: 0.25-0.5s)
 }
+
 
 // ============ REVELADO DE LA TARJETA ============
 // Orden: Poster -> Era/Tipo/Emotional -> Nombre -> Generos+Temas (fusionados,
@@ -589,6 +598,7 @@ function setupCardSkeleton() {
     <div class="card-poster-frame" id="rvPosterFrame"><div class="card-poster" id="rvPoster"></div></div>
     <div class="card-tags" id="rvTags"></div>
     <div class="card-title" id="rvTitle"></div>
+    <div class="card-nota" id="rvNota"></div>
     <div class="card-genres" id="rvGenres"></div>
     <div class="card-plat" id="rvPlat"></div>
     <div class="card-sinopsis-wrap" id="rvSinopsisWrap"></div>
@@ -622,8 +632,9 @@ function renderGenresThemes(container, t) {
     ...(t.temas ? t.temas.split(',') : [])
   ].map(s => s.trim()).filter(Boolean);
   const epsHtml = `<span class="card-eps-plain">${t.eps} eps</span>`;
+  const sepHtml = `<span class="card-eps-sep">·</span>`;
   container.innerHTML = all.length > 0
-    ? epsHtml + ` <span class="card-genres-plain">· ${all.map(g => esc(g)).join(' · ')}</span>`
+    ? `${epsHtml} ${sepHtml} <span class="card-genres-plain">${all.map(g => esc(g)).join(' · ')}</span>`
     : epsHtml;
   container.classList.add('fade-in');
 }
@@ -635,6 +646,8 @@ async function revealPickNormal(pick) {
   const tags = document.getElementById('rvTags');
   const titleEl = document.getElementById('rvTitle');
   const genresEl = document.getElementById('rvGenres');
+  const notaEl = document.getElementById('rvNota');
+  const platEl = document.getElementById('rvPlat');
   const sinopsisWrap = document.getElementById('rvSinopsisWrap');
 
   posterFrame.style.background = posterFrameGradient(pick.token.era, pick.token.band);
@@ -650,11 +663,17 @@ async function revealPickNormal(pick) {
   if (t.emotional) { addTag(tags, 'Emotional', 'emo'); await wait(300); }
   titleEl.textContent = t.title;
   titleEl.classList.add('fade-in');
+  if (t.nota) {
+    notaEl.innerHTML = `⚠ ${esc(t.nota)}`;
+    notaEl.classList.add('fade-in');
+  }
   await wait(200);
   renderGenresThemes(genresEl, t);
+  await wait(200);
+  platEl.innerHTML = platformChipsHtml(t.plataforma);
+  platEl.classList.add('fade-in');
   if (t.sinopsis) {
-    sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)}</div>
-      <button type="button" class="card-sinopsis-toggle" id="rvSinopsisToggle">Ver más</button>`;
+    sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)} <span class="card-sinopsis-toggle" id="rvSinopsisToggle" role="button" tabindex="0">Ver más</span></div>`;
     sinopsisWrap.classList.add('fade-in');
     document.getElementById('rvSinopsisToggle').addEventListener('click', () => {
       const el = document.getElementById('rvSinopsisText');
@@ -735,12 +754,6 @@ async function startDrawNormal() {
   document.getElementById('normalRow').classList.add('hidden');
   document.getElementById('confirmRow').classList.add('hidden');
   document.getElementById('gateBox').classList.add('hidden');
-  const cardArea = document.getElementById('cardArea');
-  cardArea.style.transition = 'opacity .25s';
-  cardArea.style.opacity = '0';
-  await wait(260); // esperar el fade completo ANTES de tocar el contenido/altura
-  cardArea.innerHTML = '<div class="card-empty"></div>'; // colapsa a altura minima ya invisible, no empuja nada
-  cardArea.style.opacity = '1';
   await playRevealAnimation();
 
   let result = drawNext();
@@ -806,12 +819,6 @@ async function startDrawExtra(cat, fromGate) {
   document.getElementById('confirmRow').classList.add('hidden');
   document.getElementById('confirmExtraRow').classList.add('hidden');
   document.getElementById('continueExtraRow').classList.add('hidden');
-  const cardArea = document.getElementById('cardArea');
-  cardArea.style.transition = 'opacity .25s';
-  cardArea.style.opacity = '0';
-  await wait(260);
-  cardArea.innerHTML = '<div class="card-empty"></div>';
-  cardArea.style.opacity = '1';
   await playRevealAnimation();
 
   const item = drawExtra(cat);

@@ -114,7 +114,7 @@
       </div>
     </div>
     <div class="lista-grid" id="listaGrid"></div>
-    <button type="button" class="lista-back-top hidden" id="listaBackTopBtn" aria-label="Volver arriba">⬆</button>
+    <button type="button" class="lista-back-top hidden" id="listaBackTopBtn" aria-label="Volver arriba"><span class="chevron-up"></span></button>
   </div>
 
   <!-- NUEVAS TEMPORADAS -->
@@ -169,6 +169,9 @@
         </div>
         <div class="dev-era-block" id="devEraBlock"></div>
 
+        <!-- DESLIZADORES DE COLOR -- COMENTADO (colores ya definidos, ver
+        :root/[data-theme=light] en styles.css). Descomentar este bloque Y el
+        bloque correspondiente en ui.js si hace falta volver a ajustar.
         <div class="dev-panel-title" style="margin:16px 0 8px;">Colores (prueba en vivo)</div>
         <div class="dev-slider-row"><label>Dorada</label><input type="range" min="0" max="100" id="sliderDorada" class="dev-slider"><span class="dev-color-name" id="nameDorada"></span></div>
         <div class="dev-slider-row"><label>Clásica</label><input type="range" min="0" max="100" id="sliderClasica" class="dev-slider"><span class="dev-color-name" id="nameClasica"></span></div>
@@ -177,14 +180,13 @@
         <div class="dev-slider-row"><label>Normal</label><input type="range" min="0" max="100" id="sliderNormal" class="dev-slider"><span class="dev-color-name" id="nameNormal"></span></div>
         <div class="dev-slider-row"><label>Tags</label><input type="range" min="0" max="100" id="sliderTags" class="dev-slider"><span class="dev-color-name" id="nameTags"></span></div>
         <button type="button" class="btn-secondary" id="recomendarColoresBtn" style="width:100%;margin-top:8px;">✨ Colores recomendados</button>
+        -->
 
         <button type="button" class="btn-secondary" id="resetStateBtn" style="width:100%;margin-top:14px;">↺ Reiniciar estado (prueba)</button>
       </div>
     </div>
 
     <div class="pending-row" id="pendingRow"></div>
-
-    <div class="dice-wrap" id="diceWrap"></div>
 
     <div class="card" id="cardArea">
       <div class="card-empty">Presiona "Elegir siguiente" para empezar</div>
