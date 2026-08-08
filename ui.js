@@ -57,18 +57,6 @@ async function loadState() {
 function applyTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
 }
-function renderThemeRow() {
-  const row = document.getElementById('themeRow');
-  row.innerHTML = '';
-  THEMES.forEach(t => {
-    const d = document.createElement('div');
-    d.className = 'theme-dot' + (state.theme === t ? ' active' : '');
-    d.style.background = THEME_SWATCH[t];
-    if (t === 'light') d.style.border = '2px solid #ddd';
-    d.addEventListener('click', () => { state.theme = t; applyTheme(t); renderThemeRow(); saveState(); });
-    row.appendChild(d);
-  });
-}
 
 function ntAvailableList() { return NUEVAS_TEMP.filter(nt => nt.finished && !state.seenNT.includes(nt.title)); }
 
@@ -206,7 +194,6 @@ function showView(name, pushHistory = true) {
     document.getElementById('view-' + v).classList.toggle('hidden', v !== name);
   });
   window.scrollTo(0, 0);
-  if (name === 'home') renderThemeRow();
   if (name === 'anime') renderAnimeLanding();
   if (name === 'nt') renderNuevasTemp();
   if (name === 'lista') renderListaCompleta();
@@ -254,6 +241,7 @@ document.getElementById('backAnimeFromLista').addEventListener('click', () => sh
 // ============ CONFIGURACION (modal + Modo Desarrollador) ============
 document.getElementById('openConfig').addEventListener('click', () => {
   document.getElementById('devModeToggle').checked = !!state.devMode;
+  document.getElementById('themeToggle').checked = state.theme === 'dark-purple';
   document.getElementById('configModal').classList.remove('hidden');
 });
 document.getElementById('closeConfig').addEventListener('click', () => {
@@ -268,6 +256,14 @@ document.getElementById('devModeToggle').addEventListener('change', (e) => {
   state.devMode = e.target.checked;
   saveState();
   renderDevPanel();
+});
+// Item 2: tema (oscuro/claro) ahora vive en Configuracion, no en Home. Sigue
+// siendo un toggle simple porque solo hay 2 temas hoy -- "mas adelante sera
+// otra cosa" si se agregan mas temas.
+document.getElementById('themeToggle').addEventListener('change', (e) => {
+  state.theme = e.target.checked ? 'dark-purple' : 'light';
+  applyTheme(state.theme);
+  saveState();
 });
 
 function toast(msg) {
@@ -574,7 +570,7 @@ async function selectNuevaTemp(nt) {
 const REVEAL_MARKS = ['?', '？', '❔'];
 function buildRevealHTML() {
   return `<div class="anim-cards-row" id="animCardsRow">` +
-    REVEAL_MARKS.map((m, i) => `<div class="anim-card-big" style="animation-delay:${i * -0.18}s"><span class="anim-card-q">${m}</span></div>`).join('') +
+    REVEAL_MARKS.map((m, i) => `<div class="anim-card-big c${i + 1}"><span class="anim-card-q">${m}</span></div>`).join('') +
     `</div>`;
 }
 async function playRevealAnimation() {
@@ -665,7 +661,7 @@ async function revealPickNormal(pick) {
   titleEl.classList.add('fade-in');
   if (t.nota) {
     notaEl.innerHTML = `⚠ ${esc(t.nota)}`;
-    notaEl.classList.add('fade-in');
+    notaEl.classList.add('fade-in', 'has-content');
   }
   await wait(200);
   renderGenresThemes(genresEl, t);
@@ -673,7 +669,8 @@ async function revealPickNormal(pick) {
   platEl.innerHTML = platformChipsHtml(t.plataforma);
   platEl.classList.add('fade-in');
   if (t.sinopsis) {
-    sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)} <span class="card-sinopsis-toggle" id="rvSinopsisToggle" role="button" tabindex="0">Ver más</span></div>`;
+    sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)}</div>
+      <span class="card-sinopsis-toggle" id="rvSinopsisToggle" role="button" tabindex="0">Ver más</span>`;
     sinopsisWrap.classList.add('fade-in');
     document.getElementById('rvSinopsisToggle').addEventListener('click', () => {
       const el = document.getElementById('rvSinopsisText');
@@ -745,11 +742,20 @@ function disableAllActionButtons(disabled) {
 }
 
 
+// Item 6: al Elegir/Buscar de nuevo, el scroll apunta al titulo "Ruleta de
+// Anime" (no al tope absoluto 0,0) -- asi si hay algo de header/status bar
+// arriba, el titulo queda visible como referencia en vez de quedar tapado.
+function scrollToCicloTitle() {
+  const el = document.getElementById('cicloTitle');
+  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  else window.scrollTo(0, 0);
+}
+
 // ============ FLUJO: SORTEO NORMAL DEL CICLO ============
 // Boton "Elegir siguiente": gira el dado, calcula el pick con drawNext(),
 // lo muestra, y deja los botones Confirmar/Buscar de nuevo listos.
 async function startDrawNormal() {
-  window.scrollTo(0, 0);
+  scrollToCicloTitle();
   disableAllActionButtons(true);
   document.getElementById('normalRow').classList.add('hidden');
   document.getElementById('confirmRow').classList.add('hidden');
@@ -811,7 +817,7 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
 // pidio voluntariamente via boton Cartoon o un pill pendiente (ahi NO
 // toca el ciclo para nada).
 async function startDrawExtra(cat, fromGate) {
-  window.scrollTo(0, 0);
+  scrollToCicloTitle();
   disableAllActionButtons(true);
   state.extra = { category: cat, fromGate: !!fromGate };
   document.getElementById('gateBox').classList.add('hidden');
@@ -877,7 +883,7 @@ document.getElementById('continueExtraBtn').addEventListener('click', () => {
 function renderPendingPills() {
   const row = document.getElementById('pendingRow');
   row.innerHTML = '';
-  if (state.blocking || state.pendingPick || state.extra) return;
+  if (state.blocking || state.pendingPick || state.extra) { row.classList.add('hidden'); return; }
   if (state.owed.adulto) {
     const b = document.createElement('button'); b.className = 'pill'; b.textContent = '¿Ahora sí Adulta?';
     b.addEventListener('click', () => startDrawExtra('adulto', false));
@@ -893,6 +899,7 @@ function renderPendingPills() {
     b.addEventListener('click', () => startDrawExtra('repeticion', false));
     row.appendChild(b);
   }
+  row.classList.toggle('hidden', row.children.length === 0);
 }
 
 
