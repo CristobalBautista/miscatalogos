@@ -15,6 +15,7 @@ function platformChipsHtml(plat) {
   if (keys.length === 0) return `<span class="plat-chip"><span>📺 ${esc(plat || 'Sin dato')}</span></span>`;
   return keys.map(k => `<span class="plat-chip">
       <img src="https://cdn.simpleicons.org/${PLATFORM_ICONS[k]}" alt="${k}" onerror="this.outerHTML='${PLATFORM_EMOJI[k]}'">
+      <img src="https://thesvg.org/icons/${PLATFORM_ICONS[k]}/default.svg" alt="${k}" onerror="this.outerHTML='${PLATFORM_EMOJI[k]}'">
       <span>${k[0].toUpperCase() + k.slice(1)}</span>
     </span>`).join('');
 }
@@ -189,6 +190,11 @@ async function fadeToView(name) {
 }
 
 function showView(name, pushHistory = true) {
+  if (state.view === 'ciclo' && name !== 'ciclo') {
+    drawGen++; // invalida cualquier animacion/sorteo en curso (ver playRevealAnimation)
+    state.pendingPick = null; // se descarta sin commitear -- drawNext() no toca el mazo hasta Confirmar, asi que es seguro
+    state.extra = null;
+  }
   state.view = name;
   ['home', 'anime', 'nt', 'ciclo', 'lista'].forEach(v => {
     document.getElementById('view-' + v).classList.toggle('hidden', v !== name);
@@ -387,17 +393,25 @@ document.getElementById('listaShowUnavailToggle').addEventListener('change', (e)
   state.listaShowUnavail = e.target.checked;
   saveState(); renderListaCompleta();
 });
+function openListaFilterDrawer() {
+  document.getElementById('listaFilterDrawer').classList.remove('hidden');
+  document.getElementById('listaFilterBackdrop').classList.remove('hidden');
+}
+function closeListaFilterDrawer() {
+  document.getElementById('listaFilterDrawer').classList.add('hidden');
+  document.getElementById('listaFilterBackdrop').classList.add('hidden');
+}
 document.getElementById('listaFilterToggle').addEventListener('click', () => {
-  document.getElementById('listaFilterDrawer').classList.toggle('hidden');
+  const isHidden = document.getElementById('listaFilterDrawer').classList.contains('hidden');
+  if (isHidden) openListaFilterDrawer(); else closeListaFilterDrawer();
 });
-document.addEventListener('click', (e) => {
-  const drawer = document.getElementById('listaFilterDrawer');
-  const toggleBtn = document.getElementById('listaFilterToggle');
-  if (!drawer.classList.contains('hidden') && !drawer.contains(e.target) && e.target !== toggleBtn) {
-    drawer.classList.add('hidden');
-    e.stopPropagation(); // el primer toque afuera SOLO cierra -- no debe llegarle el click a la tarjeta de abajo
-  }
-}, true); // capture phase: corre ANTES que el click propio de la tarjeta (que esta en bubble phase)
+// Backdrop real (no un truco de eventos): mientras el drawer esta abierto,
+// este div cubre toda la pantalla POR ENCIMA de las tarjetas (pero debajo
+// del propio drawer). El toque nunca llega a ninguna tarjeta -- ni :active,
+// ni click, ni seleccion -- porque desde el navegador el toque cae sobre el
+// backdrop, no sobre la tarjeta. Se cierra en pointerdown (toque inicial),
+// asi que mantener presionado sin soltar tambien cierra al instante.
+document.getElementById('listaFilterBackdrop').addEventListener('pointerdown', closeListaFilterDrawer);
 // Boton flotante "volver arriba": solo aparece cuando hay algo de scroll
 // hecho en la pestaña Lista Completa.
 window.addEventListener('scroll', () => {
@@ -567,21 +581,32 @@ async function selectNuevaTemp(nt) {
 // Vive DENTRO de #cardArea (ya no en un contenedor separado tipo diceWrap)
 // -- asi no hay 2 elementos distintos que se desplacen uno al otro cuando
 // aparece/desaparece, es el mismo espacio todo el tiempo.
-const REVEAL_MARKS = ['?', '？', '❔'];
+const REVEAL_MARK = '？'; // el mismo signo (el del centro de las 3 opciones) para las 3 cartas
 function buildRevealHTML() {
   return `<div class="anim-cards-row" id="animCardsRow">` +
-    REVEAL_MARKS.map((m, i) => `<div class="anim-card-big c${i + 1}"><span class="anim-card-q">${m}</span></div>`).join('') +
+    [0, 1, 2].map(i => `<div class="anim-card-big c${i + 1}"><span class="anim-card-q">${REVEAL_MARK}</span></div>`).join('') +
     `</div>`;
 }
-async function playRevealAnimation() {
+// Item bug 1: cada sorteo (Elegir siguiente / Buscar de nuevo) tiene un
+// "token" de generacion. Si el usuario navega fuera de Ciclo mientras un
+// sorteo esta en curso (girando o revelando), showView() invalida el token
+// -- y esta funcion, y startDrawNormal/startDrawExtra, chequean el token en
+// cada punto de espera y abortan sin tocar mas la UI/estado si ya no es el
+// sorteo vigente. Asi, re-entrar a Ciclo siempre muestra el estado inicial.
+let drawGen = 0;
+async function playRevealAnimation(myGen) {
   const cardArea = document.getElementById('cardArea');
   cardArea.innerHTML = buildRevealHTML();
   await wait(30); // que el navegador registre el estado inicial antes de animar
+  if (myGen !== drawGen) return false;
   await wait(2000); // giro
+  if (myGen !== drawGen) return false;
   document.getElementById('animCardsRow').classList.add('fade-out'); // 0.5s de fade-out -> 2.5s total
   await wait(500);
+  if (myGen !== drawGen) return false;
   cardArea.innerHTML = ''; // limpio -- setupCardSkeleton() arma el poster despues de esto
   await wait(350); // pausa antes de que el poster empiece su propio fade-in (pedido: 0.25-0.5s)
+  return myGen === drawGen;
 }
 
 
@@ -646,15 +671,21 @@ async function revealPickNormal(pick) {
   const platEl = document.getElementById('rvPlat');
   const sinopsisWrap = document.getElementById('rvSinopsisWrap');
 
-  posterFrame.style.background = posterFrameGradient(pick.token.era, pick.token.band);
+  // Se muestra la Era/Tipo REAL del titulo (t.era/t.band), no el balde
+  // original pedido (pick.token.era/band) -- ver el comentario en
+  // finishDraw() de logic.js: pueden no coincidir cuando el sorteo tuvo que
+  // relajar Era/Banda (solo pasa sin filtro activo), y mostrar el balde
+  // pedido en vez del real era justo el bug reportado ("Era Clasica -
+  // Normal" en un titulo que en realidad era Moderna).
+  posterFrame.style.background = posterFrameGradient(t.era, t.band);
   posterEl.innerHTML = t.poster
     ? `<img src="${esc(t.poster)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🎬'}))">`
     : '🎬';
   posterFrame.classList.add('fade-in');
   await wait(150);
-  addTag(tags, ERA_LABELS[pick.token.era] || pick.token.era, 'era-' + pick.token.era);
+  addTag(tags, ERA_LABELS[t.era] || t.era, 'era-' + t.era);
   await wait(500);
-  addTag(tags, pick.token.band, 'band-' + pick.token.band);
+  addTag(tags, t.band, 'band-' + t.band);
   await wait(500);
   if (t.emotional) { addTag(tags, 'Emotional', 'emo'); await wait(300); }
   titleEl.textContent = t.title;
@@ -733,7 +764,7 @@ document.getElementById('resetStateBtn').addEventListener('click', () => {
 });
 
 function disableAllActionButtons(disabled) {
-  ['nextBtn', 'redoBtn', 'confirmBtn', 'redoExtraBtn', 'confirmExtraBtn', 'continueExtraBtn',
+  ['nextBtn', 'redoBtn', 'confirmBtn', 'continueExtraBtn',
     'gateAdultoBtn', 'gateLargaBtn', 'gateRepBtn', 'gateContinueBtn'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = disabled;
@@ -747,8 +778,10 @@ function disableAllActionButtons(disabled) {
 // arriba, el titulo queda visible como referencia en vez de quedar tapado.
 function scrollToCicloTitle() {
   const el = document.getElementById('cicloTitle');
-  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  else window.scrollTo(0, 0);
+  if (!el) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  const rect = el.getBoundingClientRect();
+  const targetY = Math.max(0, window.scrollY + rect.top - 8); // 8px de aire arriba del titulo
+  window.scrollTo({ top: targetY, behavior: 'smooth' });
 }
 
 // ============ FLUJO: SORTEO NORMAL DEL CICLO ============
@@ -760,7 +793,9 @@ async function startDrawNormal() {
   document.getElementById('normalRow').classList.add('hidden');
   document.getElementById('confirmRow').classList.add('hidden');
   document.getElementById('gateBox').classList.add('hidden');
-  await playRevealAnimation();
+  const myGen = ++drawGen;
+  const ok = await playRevealAnimation(myGen);
+  if (!ok) return; // se cancelo (se navego afuera de Ciclo mientras giraba)
 
   let result = drawNext();
   if (!result) {
@@ -780,18 +815,42 @@ async function startDrawNormal() {
     disableAllActionButtons(false);
     return;
   }
+  await revealPickNormal(result);
+  if (myGen !== drawGen) return; // se cancelo mientras se revelaba
   state.pendingPick = result;
   saveState();
-  await revealPickNormal(result);
   document.getElementById('confirmRow').classList.remove('hidden');
   disableAllActionButtons(false);
 }
 document.getElementById('nextBtn').addEventListener('click', startDrawNormal);
 document.getElementById('redoBtn').addEventListener('click', async () => {
-  state.pendingPick = null;
-  await startDrawNormal();
+  if (state.extra) {
+    await startDrawExtra(state.extra.category, state.extra.fromGate);
+  } else {
+    state.pendingPick = null;
+    await startDrawNormal();
+  }
 });
 document.getElementById('confirmBtn').addEventListener('click', async () => {
+  if (state.extra) {
+    const cat = state.extra.category;
+    const fromGate = state.extra.fromGate;
+    const titleConfirmado = state.extra.item.title;
+    commitExtra(cat, state.extra.item);
+    markVistoRemote(titleConfirmado); // fire-and-forget, no bloquea la UI
+    state.extra = null;
+    document.getElementById('confirmRow').classList.add('hidden');
+    document.getElementById('continueExtraRow').classList.add('hidden');
+    if (!fromGate) { saveState(); await fadeToView('anime'); return; }
+    const stillOwed = state.owed.adulto || state.owed.larga || state.owed.repeticion;
+    if (!(state.blocking && stillOwed)) {
+      state.blocking = false;
+      startNewCycle();
+    }
+    saveState();
+    await fadeToView('anime');
+    return;
+  }
   const titleConfirmado = state.pendingPick.title.title;
   commitPick(state.pendingPick);
   markVistoRemote(titleConfirmado); // fire-and-forget, no bloquea la UI
@@ -823,42 +882,24 @@ async function startDrawExtra(cat, fromGate) {
   document.getElementById('gateBox').classList.add('hidden');
   document.getElementById('normalRow').classList.add('hidden');
   document.getElementById('confirmRow').classList.add('hidden');
-  document.getElementById('confirmExtraRow').classList.add('hidden');
   document.getElementById('continueExtraRow').classList.add('hidden');
-  await playRevealAnimation();
+  const myGen = ++drawGen;
+  const ok = await playRevealAnimation(myGen);
+  if (!ok) return; // se cancelo (se navego afuera de Ciclo mientras giraba)
 
   const item = drawExtra(cat);
-  if (!item) { toast('Sin títulos en esta categoría'); render(); disableAllActionButtons(false); return; }
+  if (!item) { toast('Sin títulos en esta categoría'); state.extra = null; render(); disableAllActionButtons(false); return; }
+  await revealPickExtra(item, cat);
+  if (myGen !== drawGen) return; // se cancelo mientras se revelaba
   state.extra.item = item;
   saveState();
-  await revealPickExtra(item, cat);
-  document.getElementById('confirmExtraRow').classList.remove('hidden');
+  document.getElementById('confirmRow').classList.remove('hidden');
   document.getElementById('continueExtraRow').classList.toggle('hidden', !state.extra.fromGate);
   disableAllActionButtons(false);
 }
 document.getElementById('gateAdultoBtn').addEventListener('click', () => startDrawExtra('adulto', true));
 document.getElementById('gateLargaBtn').addEventListener('click', () => startDrawExtra('larga', true));
 document.getElementById('gateRepBtn').addEventListener('click', () => startDrawExtra('repeticion', true));
-document.getElementById('redoExtraBtn').addEventListener('click', () => startDrawExtra(state.extra.category, state.extra.fromGate));
-document.getElementById('confirmExtraBtn').addEventListener('click', async () => {
-  const cat = state.extra.category;
-  const fromGate = state.extra.fromGate;
-  const titleConfirmado = state.extra.item.title;
-  commitExtra(cat, state.extra.item);
-  markVistoRemote(titleConfirmado); // fire-and-forget, no bloquea la UI
-  state.extra = null;
-  document.getElementById('confirmExtraRow').classList.add('hidden');
-  document.getElementById('continueExtraRow').classList.add('hidden');
-
-  if (!fromGate) { saveState(); await fadeToView('anime'); return; }
-  const stillOwed = state.owed.adulto || state.owed.larga || state.owed.repeticion;
-  if (!(state.blocking && stillOwed)) {
-    state.blocking = false;
-    startNewCycle();
-  }
-  saveState();
-  await fadeToView('anime');
-});
 document.getElementById('gateContinueBtn').addEventListener('click', () => {
   state.blocking = false; state.extra = null;
   startNewCycle();
@@ -869,7 +910,7 @@ document.getElementById('gateContinueBtn').addEventListener('click', () => {
 document.getElementById('continueExtraBtn').addEventListener('click', () => {
   state.blocking = false; state.extra = null;
   startNewCycle();
-  document.getElementById('confirmExtraRow').classList.add('hidden');
+  document.getElementById('confirmRow').classList.add('hidden');
   document.getElementById('continueExtraRow').classList.add('hidden');
   document.getElementById('normalRow').classList.remove('hidden');
   saveState(); render();
@@ -1049,6 +1090,7 @@ document.addEventListener('click', (e) => {
 
 // ============ RENDER GENERAL DE LA VISTA CICLO ============
 function render() {
+  disableAllActionButtons(false); // siempre reactivar al (re)entrar a Ciclo -- evita que queden pegados en disabled si se navega afuera a mitad de un flujo
   renderStats();
   renderPendingPills();
   renderGateOrNormal();
@@ -1065,7 +1107,6 @@ function renderGateOrNormal() {
   const gateBox = document.getElementById('gateBox');
   const normalRow = document.getElementById('normalRow');
   const confirmRow = document.getElementById('confirmRow');
-  const confirmExtraRow = document.getElementById('confirmExtraRow');
   const continueExtraRow = document.getElementById('continueExtraRow');
 
   if (state.extra) { return; }
@@ -1076,7 +1117,7 @@ function renderGateOrNormal() {
   }
   if (state.blocking) {
     normalRow.classList.add('hidden'); confirmRow.classList.add('hidden');
-    confirmExtraRow.classList.add('hidden'); continueExtraRow.classList.add('hidden');
+    continueExtraRow.classList.add('hidden');
     gateBox.classList.remove('hidden');
     document.getElementById('gateAdultoBtn').classList.toggle('hidden', !state.owed.adulto);
     document.getElementById('gateLargaBtn').classList.toggle('hidden', !state.owed.larga);
@@ -1085,7 +1126,7 @@ function renderGateOrNormal() {
     return;
   }
   gateBox.classList.add('hidden'); confirmRow.classList.add('hidden');
-  confirmExtraRow.classList.add('hidden'); continueExtraRow.classList.add('hidden');
+  continueExtraRow.classList.add('hidden');
   normalRow.classList.remove('hidden');
   if (!document.getElementById('rvTitle')) {
     document.getElementById('cardArea').innerHTML = '<div class="card-empty">Presiona "Elegir siguiente" para empezar</div>';

@@ -15,31 +15,17 @@ const THEME_SWATCH = { 'dark-purple': '#b98ee8', 'light': '#5b4fd1' };
 
 let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
 // Pool para Lista Completa: TODOS los titulos validos (Era + Larga/Adulto/
-// Repetir), sin filtrar por disponibilidad ni PendienteTemporada -- a
-// diferencia de MAIN_POOL/LARGA_POOL/etc (que alimentan el sorteo y por eso
-// deben quedar filtrados), aca la idea es mostrar el catalogo completo con
-// flags (available/pending) para que la UI decida como pintarlo, no
-// esconder filas.
+// Repetir), sin filtrar por disponibilidad ni PendienteTemporada --
 let LISTA_COMPLETA_POOL = [];
 // TODOS los titulos de Dorada/Moderna/Clasica del CSV, SIN filtrar por
 // disponibilidad ni PendienteTemporada -- se usa solo para calcular las
-// proporciones del mazo (que tan grande es cada Era/Tipo en el catalogo real
-// completo). MAIN_POOL sigue siendo el pool disponible AHORA, para elegir un
-// titulo concreto -- son 2 cosas distintas a proposito: la composicion del
-// mazo no debe moverse solo porque bajaste o viste algo (eso cambia
-// disponibilidad, no el catalogo real).
+// proporciones del mazo
 let FULL_ERA_POOL = [];
 
 // ── Tamaño del mazo: FIJO en 24, desacoplado de Largas ─────────────────────
-// Antes se penso en derivarlo de total/Largas, pero eso hacia que el tamaño
-// saltara de 19 a 31 solo con agregar o ver algunas Largas -- y ya probamos
-// (simulacion) que el tamaño le importa mucho al comportamiento (18 mal, 24
-// bien, de ahi para arriba empeora otra vez). Por eso queda fijo, se cambia
-// a mano si algun dia se decide explicitamente.
 const MAZO_SIZE = 24;
 
-// ── Reparto por resto mayor: proporcional a los datos REALES del CSV, no a
-// numeros fijos a mano. Reemplaza al viejo RECIPE hardcodeado. ─────────────
+// ── Reparto por resto mayor: proporcional a los datos REALES del CSV.
 // Ejemplo: si hay que repartir 24 slots entre Dorada/Moderna/Clasica segun
 // sus proporciones reales, esto reparte los enteros de piso y le da los
 // "sobrantes" (el resto) a quien tenga la fraccion mas alta -- asi ningun
@@ -56,10 +42,7 @@ function largestRemainder(counts, totalSlots) {
   return floors;
 }
 
-// Cuenta cuantos titulos disponibles hay por Era, y por Banda dentro de cada
-// Era -- leido en vivo de MAIN_POOL (ya cargado del CSV). Esto reemplaza los
-// porcentajes fijos de antes: si agregas o quitas series del catalogo, la
-// proxima vez que se arme un mazo esto ya refleja el cambio solo.
+// Cuenta cuantos titulos disponibles hay por Era, y por Banda dentro de cada Era
 function computeCatalogStats() {
   const eraCounts = { Dorada: 0, Moderna: 0, Clasica: 0 };
   const bandCountsByEra = {
@@ -75,11 +58,11 @@ function computeCatalogStats() {
   return { eraCounts, bandCountsByEra };
 }
 
-// Arma la cuota de UN mazo de MAZO_SIZE: primero reparte los slots totales
+// Arma la cuota de un mazo: primero reparte los slots totales
 // entre las 3 Eras (proporcional real), y dentro de Dorada/Moderna reparte
 // esos slots entre Excelente/Buena/Normal (tambien proporcional real, mismo
-// metodo que ya usaba el RECIPE original pero con numeros vivos). Clasica
-// NO se subdivide aca -- tiene tan pocos slots por mazo que un cupo fijo por
+// metodo que ya usaba el RECIPE original pero con numeros vivos). 
+// Clasica NO se subdivide aca -- tiene tan pocos slots por mazo que un cupo fijo por
 // tipo la sesgaria (podria tocarle 0 a alguna banda). Su tipo real se decide
 // aparte, en la bolsa caliente (ver freshClasicaBag).
 function buildMazoQuota() {
@@ -92,7 +75,7 @@ function buildMazoQuota() {
   return quota;
 }
 
-const PLATFORM_ICONS = { netflix: 'netflix', crunchyroll: 'crunchyroll', prime: 'primevideo', disney: 'disneyplus', max: 'max' };
+const PLATFORM_ICONS = { netflix: 'netflix', crunchyroll: 'crunchyroll', prime: 'prime', disney: 'disney-plus', max: 'hbo-max' };
 const PLATFORM_EMOJI = { netflix: '🔴', crunchyroll: '🟠', prime: '🔵', disney: '⭐', max: '🟣' };
 
 // El estado completo de la app (mazo actual, historial, tema, etc). Se
@@ -257,6 +240,7 @@ async function loadCatalog() {
 
   MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep; FULL_ERA_POOL = fullEra;
   LISTA_COMPLETA_POOL = listaCompleta;
+  console.info('MAIN_POOL', [...main]);
 }
 
 // Arma la "bolsa" de un mazo nuevo (MAZO_SIZE fichas): Dorada y Moderna con
@@ -312,6 +296,7 @@ function seedInitialState() {
   useToken('Dorada', 'Buena');
   useToken('Dorada', 'Normal');
   useToken('Moderna', 'Buena'); useToken('Moderna', 'Buena');
+  
   return {
     usedTitles: ['Assassination Classroom', '7th Time Loop', 'Ping Pong the Animation', 'Sacrificial Princess and the King of Beasts', 'Charlotte', 'Kakegurui'],
     deck: deck,
@@ -421,7 +406,19 @@ function candidateTokens() {
 function resolveBand(token) {
   if (token.band) return token.band;
   ensureClasicaBag();
-  let pool = state.clasicaBag.filter(t => !t.used);
+  const usedSet = new Set(state.usedTitles);
+  // FIX RAIZ: la bolsa (freshClasicaBag) esta pesada por el catalogo
+  // COMPLETO de Clasica (incluye titulos no disponibles/no vistos-aun), asi
+  // que por si sola puede "prometer" una banda sin ningun titulo disponible
+  // ahora mismo -- aunque haya otras Clasicas disponibles en otra banda. Por
+  // eso se filtra primero a las bandas que SI tienen al menos 1 titulo
+  // disponible sin ver: asi la bolsa solo elige entre opciones reales.
+  const bandasConOferta = new Set(
+    MAIN_POOL.filter(a => a.era === 'Clasica' && !usedSet.has(a.title)).map(a => a.band)
+  );
+
+  let pool = state.clasicaBag.filter(t => !t.used && bandasConOferta.has(t.band));
+  if (pool.length === 0) pool = state.clasicaBag.filter(t => !t.used); // sin ninguna Clasica disponible en absoluto -- cede, no hay de otra
   const filters = state.filters || {};
   if (filters.calidad) {
     const forced = pool.filter(t => t.band === filters.calidad);
@@ -450,6 +447,7 @@ function resolveBand(token) {
 const EMO_MIN = 3, EMO_MAX = 5;
 function pickTitleFor(token, band) {
   const usedSet = new Set(state.usedTitles);
+  const filters = state.filters || {};
   let candidates = MAIN_POOL.filter(a => a.era === token.era && a.band === band && !usedSet.has(a.title));
   const remaining = state.deck.filter(t => !t.used).length; // fichas que quedan en el mazo, incluyendo esta
   const faltanParaMinimo = EMO_MIN - state.emoCount;
@@ -458,14 +456,33 @@ function pickTitleFor(token, band) {
   const wantEmo = emoAllowed ? (emoForced ? true : Math.random() < 0.20) : false;
   let filtered = candidates.filter(a => a.emotional === wantEmo);
   if (filtered.length > 0) candidates = filtered;
-  if (candidates.length === 0) candidates = MAIN_POOL.filter(a => a.era === token.era && !usedSet.has(a.title));
-  if (candidates.length === 0) candidates = MAIN_POOL.filter(a => !usedSet.has(a.title));
+  // Relajar SOLO la dimension que el usuario NO fijo a proposito. Si
+  // filtraste "Clasica" nada mas (sin Tipo), relajar el Tipo dentro de
+  // Clasica sigue cumpliendo tu filtro -- por eso el chequeo es por
+  // dimension, no "hay algun filtro activo" en bloque (ese binario fue el
+  // bug de la vuelta anterior: bloqueaba tambien relajar Tipo cuando solo
+  // habias pedido Era, y terminaba sin mostrar nada de Clasica).
+  if (candidates.length === 0 && !filters.calidad) {
+    candidates = MAIN_POOL.filter(a => a.era === token.era && !usedSet.has(a.title));
+  }
+  if (candidates.length === 0 && !filters.era) {
+    candidates = MAIN_POOL.filter(a => !usedSet.has(a.title));
+  }
   if (candidates.length === 0) return null;
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
 // Empaqueta el resultado final de un sorteo: {token, title} listo para mostrar
-// en pantalla y, si se confirma, para pasar a commitPick().
+// en pantalla y, si se confirma, para pasar a commitPick(). IMPORTANTE: el
+// token que se guarda para consumir el cupo del mazo/bolsa usa la Era/Banda
+// ORIGINAL pedida (token.era/band) -- eso es correcto, es la ficha real que
+// se gasta. Pero pickTitleFor() puede haber tenido que relajar Era/Banda (ver
+// arriba, solo pasa sin filtro activo) y devolver un titulo de una Era/Tipo
+// distinta -- en ese caso, MOSTRAR el balde original seria mentirle a la
+// pantalla (BUG REAL reportado: "Era Clasica - Normal" mostrando un titulo
+// que en realidad es Moderna). Por eso separamos: token.era/band = que ficha
+// se gasta (bookkeeping), title.era/band = que se muestra en pantalla
+// (siempre la verdad real del titulo elegido).
 function finishDraw(token, band) {
   const title = pickTitleFor(token, band);
   if (!title) return null;
@@ -520,7 +537,7 @@ function commitPick(pick) {
     }
   }
   state.usedTitles.push(pick.title.title);
-  state.history.unshift({ title: pick.title.title, era: pick.token.era, band: pick.token.band, emotional: pick.title.emotional });
+  state.history.unshift({ title: pick.title.title, era: pick.title.era, band: pick.title.band, emotional: pick.title.emotional });
   if (pick.title.emotional) state.emoCount += 1;
   state.lastEraStreak = (pick.token.era === state.lastEra) ? state.lastEraStreak + 1 : 1;
   state.lastBandStreak = (pick.token.band === state.lastBand) ? state.lastBandStreak + 1 : 1;
