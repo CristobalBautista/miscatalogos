@@ -189,7 +189,10 @@ async function loadCatalog() {
   for (const r of catalogo) {
     if (!r.Nombre) continue;
     const cat = (r.Categoria || '').trim();
-    const malId = (r.MAL_ID || '').trim();
+    // Puede traer un solo ID o varios relacionados al mismo titulo,
+    // separados por ", "
+    const malIds = String(r.MAL_ID || '').split(', ').map(s => s.replace(/[^0-9]/g, '')).filter(Boolean);
+    const malId = malIds[0] || '';
 
     if (!ERA_SET.has(cat) && !OTHER_CATS.has(cat)) {
       catsDesconocidas.add(cat);
@@ -222,7 +225,7 @@ async function loadCatalog() {
     // decida como pintar cada fila en vez de que quede escondida.
     listaCompleta.push({
       title: r.Nombre, categoria: cat, era: ERA_SET.has(cat) ? cat : null, band, eps, emotional,
-      plataforma: plat, available, pending: pend, poster, smallPoster, malId
+      plataforma: plat, available, pending: pend, poster, smallPoster, malId, malIds
     });
 
     if (pend) continue; // temporada nueva en curso/pendiente -> prioridad aparte, no entra al sorteo
@@ -236,14 +239,14 @@ async function loadCatalog() {
         generos: (r.Generos || '').trim(),
         temas: (r.Temas || '').trim(),
         nota: (r.Notas || '').trim(),
-        malId
+        malId, malIds
       });
     } else if (cat === 'Larga') {
-      largas.push({ title: r.Nombre, eps, emotional, plataforma: plat, malId });
+      largas.push({ title: r.Nombre, eps, emotional, plataforma: plat, malId, malIds });
     } else if (cat === 'Repetir') {
-      rep.push({ title: r.Nombre, eps, emotional, plataforma: plat, malId });
+      rep.push({ title: r.Nombre, eps, emotional, plataforma: plat, malId, malIds });
     } else if (cat === 'Adulto') {
-      adulto.push({ title: r.Nombre, eps, emotional, plataforma: plat, malId });
+      adulto.push({ title: r.Nombre, eps, emotional, plataforma: plat, malId, malIds });
     }
   }
 
@@ -640,7 +643,7 @@ function commitExtra(cat, item) {
 // ============ ESCRITURA REMOTA: sincronizar "Visto" en el Sheet ============
 // Le avisa al Apps Script (Web App) que un titulo se confirmo (visto=true)
 // o que se deshizo una confirmacion (visto=false), para que el checkbox
-const VISTO_WRITE_URL = 'https://script.google.com/macros/s/AKfycbw_JGiDEns52YWhIo5_whitg4sXEA3p2JyBvC8sDvJ9mXSaUWZ72tbTD3C1m1PaY0JnkA/exec';
+const VISTO_WRITE_URL = 'https://script.google.com/macros/s/AKfycbwwztyAfrc-7BtjP4Q4GaSEBD3KdW2nQjChk9zP7eiqjNZlCksceI7BAtSIcaCEnOT_/exec';
 
 async function syncVistoRemote(malId, visto) {
   if (!malId) {

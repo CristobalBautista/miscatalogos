@@ -847,7 +847,7 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
     const fromGate = state.extra.fromGate;
     const titleConfirmado = state.extra.item.title;
     commitExtra(cat, state.extra.item);
-    syncVistoRemote(state.extra.item.malId, true); 
+    syncVistoRemote(state.extra.item.malId, true);
     state.extra = null;
     document.getElementById('confirmRow').classList.add('hidden');
     document.getElementById('continueExtraRow').classList.add('hidden');
@@ -862,8 +862,8 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
     return;
   }
   const titleConfirmado = state.pendingPick.title.title;
+  syncVistoRemote(state.pendingPick.title.malId, true);
   commitPick(state.pendingPick);
-  syncVistoRemote(state.pendingPick.title.malId, true); 
   document.getElementById('confirmRow').classList.add('hidden');
   const remaining = state.deck.filter(t => !t.used).length;
   if (remaining === 0) {
