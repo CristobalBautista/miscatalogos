@@ -21,6 +21,9 @@ let LISTA_COMPLETA_POOL = [];
 // disponibilidad ni PendienteTemporada -- se usa solo para calcular las
 // proporciones del mazo
 let FULL_ERA_POOL = [];
+// Titulos marcados Visto=TRUE en el Sheet, armado en cada loadCatalog().
+// Fuente de verdad real de "ya visto" -- ver reconcilePendingConfirms().
+let SEEN_IN_SHEET = [];
 
 // ── Tamaño del mazo: FIJO en 24, desacoplado de Largas ─────────────────────
 const MAZO_SIZE = 24;
@@ -179,10 +182,14 @@ async function loadCatalog() {
   const OTHER_CATS = new Set(['Adulto', 'Larga', 'Repetir']);
   const main = [], largas = [], rep = [], adulto = [], fullEra = [], listaCompleta = [];
   const catsDesconocidas = new Set();
+  // Titulos de Era que el Sheet YA marca como vistos (columna Visto,
+  // checkbox TRUE/FALSE). Ver reconcilePendingConfirms()
+  const seenInSheet = [];
 
   for (const r of catalogo) {
     if (!r.Nombre) continue;
     const cat = (r.Categoria || '').trim();
+    const malId = (r.MAL_ID || '').trim();
 
     if (!ERA_SET.has(cat) && !OTHER_CATS.has(cat)) {
       catsDesconocidas.add(cat);
@@ -195,6 +202,11 @@ async function loadCatalog() {
     const band = ERA_SET.has(cat) ? (rating > 8.0 ? 'Excelente' : (rating >= 7.5 ? 'Buena' : 'Normal')) : null;
     if (ERA_SET.has(cat)) {
       fullEra.push({ era: cat, band });
+      // Se registra SIEMPRE (aunque hoy no este disponible o este pendiente
+      // de temporada) -- si el Sheet dice visto, no debe volver a salir en
+      // el sorteo pase lo que pase con su disponibilidad actual.
+      const vistoRaw = String(r.Visto || '').trim().toUpperCase();
+      if (vistoRaw === 'TRUE') seenInSheet.push(r.Nombre);
     }
 
     const pend = (r.PendienteTemporada || '').trim() === 'X';
@@ -210,7 +222,7 @@ async function loadCatalog() {
     // decida como pintar cada fila en vez de que quede escondida.
     listaCompleta.push({
       title: r.Nombre, categoria: cat, era: ERA_SET.has(cat) ? cat : null, band, eps, emotional,
-      plataforma: plat, available, pending: pend, poster, smallPoster
+      plataforma: plat, available, pending: pend, poster, smallPoster, malId
     });
 
     if (pend) continue; // temporada nueva en curso/pendiente -> prioridad aparte, no entra al sorteo
@@ -223,14 +235,15 @@ async function loadCatalog() {
         sinopsis: (r.Sinopsis || '').trim(),
         generos: (r.Generos || '').trim(),
         temas: (r.Temas || '').trim(),
-        nota: (r.Notas || '').trim()
+        nota: (r.Notas || '').trim(),
+        malId
       });
     } else if (cat === 'Larga') {
-      largas.push({ title: r.Nombre, eps, emotional, plataforma: plat });
+      largas.push({ title: r.Nombre, eps, emotional, plataforma: plat, malId });
     } else if (cat === 'Repetir') {
-      rep.push({ title: r.Nombre, eps, emotional, plataforma: plat });
+      rep.push({ title: r.Nombre, eps, emotional, plataforma: plat, malId });
     } else if (cat === 'Adulto') {
-      adulto.push({ title: r.Nombre, eps, emotional, plataforma: plat });
+      adulto.push({ title: r.Nombre, eps, emotional, plataforma: plat, malId });
     }
   }
 
@@ -240,7 +253,7 @@ async function loadCatalog() {
 
   MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep; FULL_ERA_POOL = fullEra;
   LISTA_COMPLETA_POOL = listaCompleta;
-  console.info('MAIN_POOL', [...main]);
+  SEEN_IN_SHEET = seenInSheet;
 }
 
 // Arma la "bolsa" de un mazo nuevo (MAZO_SIZE fichas): Dorada y Moderna con
@@ -296,7 +309,7 @@ function seedInitialState() {
   useToken('Dorada', 'Buena');
   useToken('Dorada', 'Normal');
   useToken('Moderna', 'Buena'); useToken('Moderna', 'Buena');
-  
+
   return {
     usedTitles: ['Assassination Classroom', '7th Time Loop', 'Ping Pong the Animation', 'Sacrificial Princess and the King of Beasts', 'Charlotte', 'Kakegurui'],
     deck: deck,
@@ -313,6 +326,9 @@ function seedInitialState() {
     filters: { era: null, calidad: null, generos: [] },
     cycleNum: 1,
     pendingPick: null,
+    // Confirmaciones recientes (ultimos ~60s) todavia no verificadas contra el Sheet
+    //  -- ver RECONCILE_WINDOW_MS y reconcilePendingConfirms().
+    pendingConfirms: [],
     largaUsed: [], adultoUsed: [], repUsed: [],
     seenNT: [],
     owed: { adulto: false, larga: false, repeticion: false },
@@ -337,6 +353,7 @@ async function saveState() {
   try {
     const cache = {
       usedTitles: state.usedTitles,
+      pendingConfirms: state.pendingConfirms,
       largaUsed: state.largaUsed,
       adultoUsed: state.adultoUsed,
       repUsed: state.repUsed
@@ -512,8 +529,41 @@ function snapshotForUndo() {
     lastEra: state.lastEra, lastEraStreak: state.lastEraStreak,
     lastBand: state.lastBand, lastBandStreak: state.lastBandStreak,
     clasicaBag: state.clasicaBag, owed: state.owed,
-    blocking: state.blocking, cycleNum: state.cycleNum
+    blocking: state.blocking, cycleNum: state.cycleNum,
+    pendingConfirms: state.pendingConfirms
   }));
+}
+
+// Ventana de gracia: si el Sheet todavia no refleja una confirmacion
+// reciente despues de este tiempo, se deja de confiar en la copia local y
+// se confia en el Sheet (ver reconcilePendingConfirms).
+const RECONCILE_WINDOW_MS = 60 * 1000;
+
+// Decide el usedTitles real al arrancar la app: parte de lo que dice el
+// Sheet (SEEN_IN_SHEET, armado en loadCatalog) y le suma, SOLO
+// temporalmente, las confirmaciones locales que el Sheet todavia no
+// alcanzo a reflejar. Las confirmaciones locales mas viejas que
+// RECONCILE_WINDOW_MS que el Sheet sigue sin mostrar como vistas se
+// descartan.
+// Importante: esto SOLO se llama al cargar la app (loadState en ui.js),
+// nunca hay un timer corriendo en segundo plano durante una sesion
+// abierta -- state.usedTitles en memoria no pierde nada por el paso del
+// tiempo mientras la app sigue abierta.
+function reconcilePendingConfirms(pendingConfirms) {
+  const sheetSet = new Set(SEEN_IN_SHEET);
+  const now = Date.now();
+  const survivors = [];
+  const extraTitles = [];
+  (pendingConfirms || []).forEach(entry => {
+    if (sheetSet.has(entry.title)) return; // el Sheet ya lo confirmo, esta entrada ya cumplio su funcion
+    if (now - entry.ts < RECONCILE_WINDOW_MS) {
+      survivors.push(entry);
+      extraTitles.push(entry.title);
+    }
+    // si paso la ventana y el Sheet sigue sin confirmarlo, se descarta:
+    // no entra a extraTitles ni se conserva en survivors
+  });
+  return { usedTitles: [...SEEN_IN_SHEET, ...extraTitles], pendingConfirms: survivors };
 }
 
 // Confirma un pick del ciclo normal: marca la ficha del mazo como usada (y si
@@ -522,7 +572,7 @@ function snapshotForUndo() {
 // (lastEra/lastEraStreak, lastBand/lastBandStreak) y el cooldown de Emotional
 // que usan las reglas en la proxima tirada.
 function commitPick(pick) {
-  state.lastAction = { type: 'ciclo', snapshot: snapshotForUndo() };
+  state.lastAction = { type: 'ciclo', malId: pick.title.malId, snapshot: snapshotForUndo() };
   // Los picks outOfDeck (fallback fuera de mazo, ver candidateTokens) no
   // vinieron de una ficha real del mazo ni de la bolsa caliente -- fueron
   // una excepcion puntual armada directo desde el catalogo. No hay ficha ni
@@ -537,6 +587,7 @@ function commitPick(pick) {
     }
   }
   state.usedTitles.push(pick.title.title);
+  state.pendingConfirms.push({ title: pick.title.title, malId: pick.title.malId, ts: Date.now() });
   state.history.unshift({ title: pick.title.title, era: pick.title.era, band: pick.title.band, emotional: pick.title.emotional });
   if (pick.title.emotional) state.emoCount += 1;
   state.lastEraStreak = (pick.token.era === state.lastEra) ? state.lastEraStreak + 1 : 1;
@@ -586,25 +637,23 @@ function commitExtra(cat, item) {
   state.owed[cat] = false;
 }
 
-// ============ ESCRITURA REMOTA: marcar "Visto" en el Sheet ============
-// Le avisa al Apps Script (Web App) que un titulo se confirmo, para que
-// marque Visto=Y en la fila correspondiente. Fire-and-forget a proposito:
-// si falla (sin internet, URL vieja, etc) NO debe trabar la app ni el
-// flujo normal -- el estado local (state.usedTitles / localStorage) ya
-// es la fuente de verdad para que el sorteo no repita, esto es solo para
-// que el Sheet quede reflejado. Reintentar o avisar visualmente si falla
-// es un pendiente aparte, no bloquea el uso hoy.
-
+// ============ ESCRITURA REMOTA: sincronizar "Visto" en el Sheet ============
+// Le avisa al Apps Script (Web App) que un titulo se confirmo (visto=true)
+// o que se deshizo una confirmacion (visto=false), para que el checkbox
 const VISTO_WRITE_URL = 'https://script.google.com/macros/s/AKfycbw_JGiDEns52YWhIo5_whitg4sXEA3p2JyBvC8sDvJ9mXSaUWZ72tbTD3C1m1PaY0JnkA/exec';
 
-async function markVistoRemote(title) {
+async function syncVistoRemote(malId, visto) {
+  if (!malId) {
+    console.warn('syncVistoRemote: Sin malId, no se pudo sincronizar con el Sheet (visto=' + visto + ')');
+    return;
+  }
   try {
     await fetch(VISTO_WRITE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ nombre: title })
+      body: JSON.stringify({ malId: String(malId), visto: !!visto })
     });
   } catch (err) {
-    console.warn('No se pudo marcar Visto en el Sheet para', title, err);
+    console.warn('No se pudo sincronizar Visto=' + visto + ' en el Sheet para malId', malId, err);
   }
 }

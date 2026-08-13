@@ -39,13 +39,17 @@ async function loadState() {
   state = seedInitialState();
   try {
     const raw = localStorage.getItem('ruleta-anime-vistas-v1');
-    if (raw) {
-      const cache = JSON.parse(raw);
-      if (Array.isArray(cache.usedTitles)) state.usedTitles = cache.usedTitles;
+    const cache = raw ? JSON.parse(raw) : null;
+    const pendingCache = (cache && Array.isArray(cache.pendingConfirms)) ? cache.pendingConfirms : [];
+    const { usedTitles: reconciledUsed, pendingConfirms } = reconcilePendingConfirms(pendingCache);
+    state.usedTitles = Array.from(new Set([...state.usedTitles, ...reconciledUsed]));
+    state.pendingConfirms = pendingConfirms;
+    if (cache) {
       if (Array.isArray(cache.largaUsed)) state.largaUsed = cache.largaUsed;
       if (Array.isArray(cache.adultoUsed)) state.adultoUsed = cache.adultoUsed;
       if (Array.isArray(cache.repUsed)) state.repUsed = cache.repUsed;
     }
+    saveState(); // persiste ya podado (pendingConfirms sin las entradas vencidas)
   } catch (e) { console.error(e); }
   applyTheme(state.theme);
   document.getElementById('view-loading').classList.add('hidden');
@@ -171,8 +175,6 @@ document.getElementById('recomendarColoresBtn').addEventListener('click', () => 
 });
 
 */
-
-
 
 // ============ NAVEGACION ENTRE VISTAS ============
 // Solo hay 5 pantallas (home/anime/nt/ciclo/lista) y se muestran/ocultan
@@ -475,12 +477,13 @@ async function commitFromLista(item) {
   } else {
     const catKey = catKeyFor(item.categoria);
     state.lastAction = {
-      type: 'lista-extra', snapshot: JSON.parse(JSON.stringify({
+      type: 'lista-extra', malId: item.malId, snapshot: JSON.parse(JSON.stringify({
         history: state.history, adultoUsed: state.adultoUsed, largaUsed: state.largaUsed,
         repUsed: state.repUsed, owed: state.owed
       }))
     };
     commitExtra(catKey, item);
+    syncVistoRemote(item.malId, true);
     saveState();
     await fadeToView('anime');
   }
@@ -514,16 +517,23 @@ document.getElementById('infoModal').addEventListener('click', (e) => {
 });
 
 async function selectFromLista(item) {
-  state.lastAction = { type: 'lista', snapshot: JSON.parse(JSON.stringify({ history: state.history, usedTitles: state.usedTitles })) };
+  state.lastAction = {
+    type: 'lista', malId: item.malId,
+    snapshot: JSON.parse(JSON.stringify({ history: state.history, usedTitles: state.usedTitles, pendingConfirms: state.pendingConfirms }))
+  };
   state.usedTitles.push(item.title);
+  state.pendingConfirms.push({ title: item.title, malId: item.malId, ts: Date.now() });
   state.history.unshift({ title: item.title, era: item.era, band: item.band, emotional: item.emotional });
+  syncVistoRemote(item.malId, true);
   saveState();
   await fadeToView('anime');
 }
 document.getElementById('undoLink').addEventListener('click', () => {
   if (!state.lastAction) return;
+  const malId = state.lastAction.malId;
   Object.assign(state, state.lastAction.snapshot);
   state.lastAction = null;
+  if (malId) syncVistoRemote(malId, false);
   saveState();
   renderAnimeLanding();
 });
@@ -837,7 +847,7 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
     const fromGate = state.extra.fromGate;
     const titleConfirmado = state.extra.item.title;
     commitExtra(cat, state.extra.item);
-    markVistoRemote(titleConfirmado); // fire-and-forget, no bloquea la UI
+    syncVistoRemote(state.extra.item.malId, true); 
     state.extra = null;
     document.getElementById('confirmRow').classList.add('hidden');
     document.getElementById('continueExtraRow').classList.add('hidden');
@@ -853,7 +863,7 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
   }
   const titleConfirmado = state.pendingPick.title.title;
   commitPick(state.pendingPick);
-  markVistoRemote(titleConfirmado); // fire-and-forget, no bloquea la UI
+  syncVistoRemote(state.pendingPick.title.malId, true); 
   document.getElementById('confirmRow').classList.add('hidden');
   const remaining = state.deck.filter(t => !t.used).length;
   if (remaining === 0) {
