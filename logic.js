@@ -63,11 +63,9 @@ function computeCatalogStats() {
 
 // Arma la cuota de un mazo: primero reparte los slots totales
 // entre las 3 Eras (proporcional real), y dentro de Dorada/Moderna reparte
-// esos slots entre Excelente/Buena/Normal (tambien proporcional real, mismo
-// metodo que ya usaba el RECIPE original pero con numeros vivos). 
+// esos slots entre Excelente/Buena/Normal.
 // Clasica NO se subdivide aca -- tiene tan pocos slots por mazo que un cupo fijo por
-// tipo la sesgaria (podria tocarle 0 a alguna banda). Su tipo real se decide
-// aparte, en la bolsa caliente (ver freshClasicaBag).
+// podria tocarle 0 a alguna banda. Su tipo real se decide en freshClasicaBag.
 function buildMazoQuota() {
   const { eraCounts, bandCountsByEra } = computeCatalogStats();
   const eraQuota = largestRemainder(eraCounts, MAZO_SIZE);
@@ -153,12 +151,8 @@ async function fetchCsv(path) {
 // (MAIN_POOL = Dorada+Moderna+Clasica, LARGA_POOL, ADULTO_POOL, REP_POOL).
 // Se llama una vez al abrir la app (ver loadState en ui.js).
 // URL del catalogo publicado desde Google Sheets (Archivo > Compartir >
-// Publicar en la web > CSV). Nuevas Temporadas vive en OTRA pestaña del
-// mismo Sheet, publicada aparte -- reemplazar TU_GID_NUEVAS_TEMP por el gid
-// real de esa pestaña una vez publicada (Archivo > Compartir > Publicar en
-// la web > elegir la pestaña > CSV > copiar el gid de la URL resultante).
-// Columnas esperadas en esa pestaña: Nombre, Eps, FechaFinalizacion (mismo
-// mapeo que se usaba con el CSV local).
+// Publicar en la web > CSV).
+// Nuevas Temporadas vive en OTRA pestaña del mismo Sheet, publicada aparte
 const CATALOGO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMKcfeHBpai6WyQKvI33TLIt5bU9dgVpAh0l-H6P8ZBdpXdlCfRnP--dxkpLbpA5mLwX8MHfjNrSoT/pub?gid=353737606&single=true&output=csv';
 const NUEVAS_TEMP_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQMKcfeHBpai6WyQKvI33TLIt5bU9dgVpAh0l-H6P8ZBdpXdlCfRnP--dxkpLbpA5mLwX8MHfjNrSoT/pub?gid=1202889877&single=true&output=csv';
 
@@ -173,11 +167,6 @@ async function loadCatalog() {
     poster: (r.Poster || '').trim()
   })).filter(r => r.title);
 
-  // Categorias validas: el CSV/Sheet ya trae el valor final directo, no hay
-  // traduccion -- si "Categoria" dice "Moderna", la era ES "Moderna". Este
-  // set solo sirve para VALIDAR y avisar si aparece algo inesperado (ej. un
-  // typo nuevo en el Sheet), en vez de descartar la fila en silencio como
-  // pasaba antes con el diccionario viejo.
   const ERA_SET = new Set(['Dorada', 'Moderna', 'Clasica']);
   const OTHER_CATS = new Set(['Adulto', 'Larga', 'Repetir']);
   const main = [], largas = [], rep = [], adulto = [], fullEra = [], listaCompleta = [];
@@ -189,8 +178,7 @@ async function loadCatalog() {
   for (const r of catalogo) {
     if (!r.Nombre) continue;
     const cat = (r.Categoria || '').trim();
-    // Puede traer un solo ID o varios relacionados al mismo titulo,
-    // separados por ", "
+    // Puede traer un solo ID o varios relacionados al mismo titulo, separados por ", "
     const malIds = String(r.MAL_ID || '').split(', ').map(s => s.replace(/[^0-9]/g, '')).filter(Boolean);
     const malId = malIds[0] || '';
 
@@ -205,9 +193,6 @@ async function loadCatalog() {
     const band = ERA_SET.has(cat) ? (rating > 8.0 ? 'Excelente' : (rating >= 7.5 ? 'Buena' : 'Normal')) : null;
     if (ERA_SET.has(cat)) {
       fullEra.push({ era: cat, band });
-      // Se registra SIEMPRE (aunque hoy no este disponible o este pendiente
-      // de temporada) -- si el Sheet dice visto, no debe volver a salir en
-      // el sorteo pase lo que pase con su disponibilidad actual.
       const vistoRaw = String(r.Visto || '').trim().toUpperCase();
       if (vistoRaw === 'TRUE') seenInSheet.push(r.Nombre);
     }
@@ -256,7 +241,8 @@ async function loadCatalog() {
 
   MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep; FULL_ERA_POOL = fullEra;
   LISTA_COMPLETA_POOL = listaCompleta;
-  SEEN_IN_SHEET = seenInSheet;
+  USED_FROM_SHEET = usedFromSheet;
+  console.info('MAIN_POOL', [...main]);
 }
 
 // Arma la "bolsa" de un mazo nuevo (MAZO_SIZE fichas): Dorada y Moderna con
@@ -277,12 +263,7 @@ function freshDeck() {
 }
 
 // ── Bolsa caliente de Clasica ───────────────────────────────────────────
-// Antes, cada vez que tocaba una ficha Clasica se tiraba un dado sin memoria
-// (42/40/18% siempre igual, sin importar que salio antes) -- eso significa
-// que Clasica, a diferencia de Dorada/Moderna, NO tenia garantia de terminar
-// en las proporciones reales, solo se acercaba en promedio. La bolsa
-// caliente arregla esto: es una bolsa aparte con TODOS los titulos Clasica
-// reales (ej. 19 Excelente / 18 Buena / 8 Normal), que se va vaciando de a una
+// Es una bolsa aparte con TODOS los titulos Clasica reales, que se va vaciando de a una
 // cada vez que sale una Clasica -- igual que el mazo principal, pero a la
 // escala del catalogo Clasica completo (dura muchos mazos principales antes
 // de agotarse y rearmarse sola, porque Clasica es solo 2-3 fichas por mazo).
@@ -368,8 +349,7 @@ async function saveState() {
 // Candidatas validas para la proxima tirada del mazo principal. 2 capas:
 // 1) Filtros "Quiero ver" (Era/Calidad) si estan activos -- estos SON una
 //    eleccion explicita, asi que tienen prioridad y de paso saltan la regla
-//    de racha para ese eje (pedir "Dorada" a proposito cuando ya salio 2
-//    veces seguida es justamente para eso).
+//    de racha para ese eje 
 // 2) Si no hay filtro en ese eje, aplica la regla de racha: permite 2 veces
 //    seguidas de la misma Era o el mismo Tipo, pero bloquea la 3ra -- salvo
 //    que ya no quede ninguna alternativa (la bolsa se queda sin opcion), en
@@ -394,16 +374,10 @@ function candidateTokens() {
     if (alt.length > 0) pool = alt;
   }
 
-  // Fallback fuera de mazo (bug 0/11): un filtro "Quiero ver" activo puede no
-  // tener NINGUNA ficha en el mazo actual de 24 aunque el catalogo si tenga
-  // titulos disponibles que cumplan -- el mazo es solo una muestra chica, no
-  // el universo completo. Antes esto devolvia vacio y la UI se quedaba
-  // mostrando el pick anterior sin avisar nada. Ahora, si el mazo no tiene
-  // nada, se arma un pool "suelto" directo desde MAIN_POOL (catalogo
-  // disponible real) respetando los mismos filtros. Estas fichas se marcan
-  // outOfDeck:true: al confirmarse NO gastan cupo del mazo ni de la bolsa
-  // caliente de Clasica (ver commitPick), porque no vinieron de ahi -- es
-  // una excepcion puntual pedida a proposito, no parte del reparto normal.
+  // Fallback fuera de mazo: un filtro "Quiero ver" activo se arma un pool "suelto"
+  // directo desde MAIN_POOL (catalogo disponible real) respetando los mismos filtros. 
+  // Estas fichas se marcan outOfDeck:true: al confirmarse NO gastan cupo del mazo ni de la bolsa
+  // caliente de Clasica, porque no vinieron de ahi
   // Solo si esto TAMBIEN sale vacio es un "sin resultados" de verdad.
   if (pool.length === 0 && (filters.era || filters.calidad)) {
     const usedSet = new Set(state.usedTitles);
@@ -417,110 +391,94 @@ function candidateTokens() {
 }
 
 // Devuelve la banda (Excelente/Buena/Normal) de una ficha. Si ya trae banda fija
-// (Dorada/Moderna) la devuelve tal cual. Si es Clasica (band=null), la saca
-// de la bolsa caliente (ver freshClasicaBag) -- respetando el filtro de
-// Calidad si esta activo, o si no la regla de racha (permite 2, bloquea 3ra),
-// igual que candidateTokens(). Es solo LECTURA: no marca nada usado todavia,
-// eso pasa recien en commitPick() cuando se confirma de verdad (asi "buscar
-// de nuevo" no gasta fichas de la bolsa por picks que se terminan descartando).
+// (Dorada/Moderna) la devuelve tal cual. Si es Clasica (band=null):
+// - Con filtro de Calidad activo: la banda ya la elegiste vos, la bolsa no
+//   participa. Se chequea directo el catalogo real; si no hay oferta, null
+//   -- drawNext() descarta este token y prueba otro, sin sustituir nada.
+// - Sin filtro: la bolsa decide al azar (pesada por el catalogo real de
+//   Clasica) para mantener las proporciones reales en el largo plazo. Si
+//   la banda que toca no tiene oferta real ahora mismo, tambien null --
+//   misma regla, sin excepciones.
+// Es solo LECTURA: no marca nada usado todavia, eso pasa en commitPick()
+// (asi "buscar de nuevo" no gasta fichas de la bolsa por picks descartados).
 function resolveBand(token) {
   if (token.band) return token.band;
-  ensureClasicaBag();
-  const usedSet = new Set(state.usedTitles);
-  // FIX RAIZ: la bolsa (freshClasicaBag) esta pesada por el catalogo
-  // COMPLETO de Clasica (incluye titulos no disponibles/no vistos-aun), asi
-  // que por si sola puede "prometer" una banda sin ningun titulo disponible
-  // ahora mismo -- aunque haya otras Clasicas disponibles en otra banda. Por
-  // eso se filtra primero a las bandas que SI tienen al menos 1 titulo
-  // disponible sin ver: asi la bolsa solo elige entre opciones reales.
-  const bandasConOferta = new Set(
-    MAIN_POOL.filter(a => a.era === 'Clasica' && !usedSet.has(a.title)).map(a => a.band)
-  );
-
-  let pool = state.clasicaBag.filter(t => !t.used && bandasConOferta.has(t.band));
-  if (pool.length === 0) pool = state.clasicaBag.filter(t => !t.used); // sin ninguna Clasica disponible en absoluto -- cede, no hay de otra
   const filters = state.filters || {};
+  const usedSet = new Set(state.usedTitles);
+
   if (filters.calidad) {
-    const forced = pool.filter(t => t.band === filters.calidad);
-    if (forced.length > 0) pool = forced;
-  } else if (state.lastBand && state.lastBandStreak >= 2) {
+    const hayOferta = MAIN_POOL.some(a => a.era === 'Clasica' && a.band === filters.calidad && !usedSet.has(a.title));
+    return hayOferta ? filters.calidad : null;
+  }
+
+  ensureClasicaBag();
+  let pool = state.clasicaBag.filter(t => !t.used);
+  if (state.lastBand && state.lastBandStreak >= 2) {
     const alt = pool.filter(t => t.band !== state.lastBand);
-    if (alt.length > 0) pool = alt;
+    if (alt.length > 0) pool = alt; // evitar racha es preferencia de ritmo, no filtro tuyo -- si no hay alternativa, cede
   }
   return pool[Math.floor(Math.random() * pool.length)].band;
 }
 
-// Dado un token ya resuelto (era+banda), elige el titulo concreto:
-// 1) intenta cumplir la decision de "emotional si/no" (ver mas abajo)
-// 2) si no hay candidatos con ese filtro exacto, relaja emotional
-// 3) si no hay nada en esa banda, relaja banda (cualquiera de la era)
-// 4) si no hay nada en la era, relaja a cualquier titulo no visto
-// El "quiero emotional" se decide aca mismo: entre EMO_MIN y EMO_MAX por
-// mazo (antes era un tope fijo de 3 con ~20% de probabilidad por tirada, lo
-// que en la practica daba mas cerca de 12.5% real porque el contador topaba
-// antes de que el 20% tuviera chance de expresarse en las 24 fichas del
-// mazo). Cooldown DURO de 2 tiradas despues de cada Emotional (no solo
-// evitar la inmediata siguiente). Si al mazo le quedan justo las fichas
-// necesarias para todavia llegar al minimo, se fuerza Emotional aunque el
-// cooldown normal lo bloquearia -- garantizar el piso de 3 pesa mas que la
-// regla de "no muy seguido".
+// "Emotional" se decide en 3 casos, sin zona intermedia:
+// - Forzado de piso: al mazo le quedan justo las fichas necesarias para
+//   todavia llegar a EMO_MIN -- exige Emotional.
+// - Cooldown/tope: justo salio un Emotional (cooldown de 2 tiradas) o ya
+//   se llego a EMO_MAX -- excluye Emotional.
+// - Caso normal (ni una cosa ni la otra): NO filtra por Emotional en
+//   absoluto -- todos los candidatos compiten parejo, sea cual sea su
+//   Emotional. Antes este caso tiraba una moneda de ~20% por tirada, lo
+//   que con pools chicos (ej. Clasica-Excelente con 2 Emotional y 2 que no)
+//   partia el pool en dos grupos desparejos (80%/20%) en vez de dejarlos
+//   competir parejo -- eso ya no pasa.
+// En cualquier caso, si el filtro resultante da 0 candidatos, cede sobre
+// el mismo Era+Banda (Emotional es ritmo interno, no un filtro tuyo).
 const EMO_MIN = 3, EMO_MAX = 5;
 function pickTitleFor(token, band) {
   const usedSet = new Set(state.usedTitles);
-  const filters = state.filters || {};
   let candidates = MAIN_POOL.filter(a => a.era === token.era && a.band === band && !usedSet.has(a.title));
+  if (candidates.length === 0) return null;
+
   const remaining = state.deck.filter(t => !t.used).length; // fichas que quedan en el mazo, incluyendo esta
   const faltanParaMinimo = EMO_MIN - state.emoCount;
   const emoForced = faltanParaMinimo > 0 && remaining <= faltanParaMinimo;
-  const emoAllowed = state.emoCount < EMO_MAX && (state.emoCooldown <= 0 || emoForced);
-  const wantEmo = emoAllowed ? (emoForced ? true : Math.random() < 0.20) : false;
-  let filtered = candidates.filter(a => a.emotional === wantEmo);
+  const emoBloqueado = !emoForced && (state.emoCooldown > 0 || state.emoCount >= EMO_MAX);
+
+  let filtered = candidates;
+  if (emoForced) filtered = candidates.filter(a => a.emotional === true);
+  else if (emoBloqueado) filtered = candidates.filter(a => a.emotional === false);
   if (filtered.length > 0) candidates = filtered;
-  // Relajar SOLO la dimension que el usuario NO fijo a proposito. Si
-  // filtraste "Clasica" nada mas (sin Tipo), relajar el Tipo dentro de
-  // Clasica sigue cumpliendo tu filtro -- por eso el chequeo es por
-  // dimension, no "hay algun filtro activo" en bloque (ese binario fue el
-  // bug de la vuelta anterior: bloqueaba tambien relajar Tipo cuando solo
-  // habias pedido Era, y terminaba sin mostrar nada de Clasica).
-  if (candidates.length === 0 && !filters.calidad) {
-    candidates = MAIN_POOL.filter(a => a.era === token.era && !usedSet.has(a.title));
-  }
-  if (candidates.length === 0 && !filters.era) {
-    candidates = MAIN_POOL.filter(a => !usedSet.has(a.title));
-  }
-  if (candidates.length === 0) return null;
+
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
-// Empaqueta el resultado final de un sorteo: {token, title} listo para mostrar
-// en pantalla y, si se confirma, para pasar a commitPick(). IMPORTANTE: el
-// token que se guarda para consumir el cupo del mazo/bolsa usa la Era/Banda
-// ORIGINAL pedida (token.era/band) -- eso es correcto, es la ficha real que
-// se gasta. Pero pickTitleFor() puede haber tenido que relajar Era/Banda (ver
-// arriba, solo pasa sin filtro activo) y devolver un titulo de una Era/Tipo
-// distinta -- en ese caso, MOSTRAR el balde original seria mentirle a la
-// pantalla (BUG REAL reportado: "Era Clasica - Normal" mostrando un titulo
-// que en realidad es Moderna). Por eso separamos: token.era/band = que ficha
-// se gasta (bookkeeping), title.era/band = que se muestra en pantalla
-// (siempre la verdad real del titulo elegido).
+// Empaqueta el resultado final de un sorteo: {token, title} listo para
+// mostrar en pantalla y, si se confirma, para pasar a commitPick(). 
 function finishDraw(token, band) {
   const title = pickTitleFor(token, band);
   if (!title) return null;
   return { token: { era: token.era, band, outOfDeck: !!token.outOfDeck }, title };
 }
 
-// Sortea la proxima ficha del ciclo normal: elige un token al azar entre los
-// candidatos validos (candidateTokens ya aplica filtros "Quiero ver" y las
-// reglas de racha), le resuelve la banda, y le busca titulo. "Buscar de
-// nuevo" llama a esto de nuevo tal cual -- ya NO tiene un bypass especial de
-// reglas; si se quiere forzar Era/Tipo a proposito, es via los filtros, no
-// tocando 2 veces el boton.
+// Sortea la proxima ficha: candidateTokens() ya aplica filtros "Quiero ver"
+// y las reglas de racha. Prueba tokens al azar del pool; si un token no
+// tiene oferta real (band o titulo exacto no disponible), se DESCARTA y se
+// prueba con otro -- nunca se sustituye su Era/Banda por otra. Recien si
+// se agota el pool entero sin encontrar nada, es "no hay resultados" real.
+// "Buscar de nuevo" llama a esto tal cual, sin bypass de reglas.
 function drawNext() {
   let pool = candidateTokens();
-  if (pool.length === 0) return null;
-  const token = pool[Math.floor(Math.random() * pool.length)];
-  const band = resolveBand(token);
-  return finishDraw(token, band);
+  while (pool.length > 0) {
+    const idx = Math.floor(Math.random() * pool.length);
+    const token = pool[idx];
+    const band = resolveBand(token);
+    if (band !== null) {
+      const result = finishDraw(token, band);
+      if (result) return result;
+    }
+    pool = pool.slice(0, idx).concat(pool.slice(idx + 1)); // este token no tenia oferta real -- se descarta, se prueba otro
+  }
+  return null;
 }
 
 // Copia profunda de todos los campos que "Deshacer" necesita restaurar. Se toma
@@ -558,13 +516,11 @@ function reconcilePendingConfirms(pendingConfirms) {
   const survivors = [];
   const extraTitles = [];
   (pendingConfirms || []).forEach(entry => {
-    if (sheetSet.has(entry.title)) return; // el Sheet ya lo confirmo, esta entrada ya cumplio su funcion
+    if (sheetSet.has(entry.title)) return;
     if (now - entry.ts < RECONCILE_WINDOW_MS) {
       survivors.push(entry);
       extraTitles.push(entry.title);
     }
-    // si paso la ventana y el Sheet sigue sin confirmarlo, se descarta:
-    // no entra a extraTitles ni se conserva en survivors
   });
   return { usedTitles: [...SEEN_IN_SHEET, ...extraTitles], pendingConfirms: survivors };
 }
