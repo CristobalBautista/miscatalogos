@@ -241,7 +241,7 @@ async function loadCatalog() {
 
   MAIN_POOL = main; LARGA_POOL = largas; ADULTO_POOL = adulto; REP_POOL = rep; FULL_ERA_POOL = fullEra;
   LISTA_COMPLETA_POOL = listaCompleta;
-  USED_FROM_SHEET = usedFromSheet;
+  SEEN_IN_SHEET = seenInSheet;
   console.info('MAIN_POOL', [...main]);
 }
 
@@ -421,8 +421,11 @@ function resolveBand(token) {
 }
 
 // "Emotional" se decide en 3 casos, sin zona intermedia:
-// - Forzado de piso: al mazo le quedan justo las fichas necesarias para
-//   todavia llegar a EMO_MIN -- exige Emotional.
+// - Forzado de piso: si faltan N Emotional para llegar a EMO_MIN, hace
+//   falta arrancar a tiempo, no en la ultima ficha posible -- cada
+//   Emotional forzado (salvo el ultimo) necesita 2 fichas de cooldown
+//   despues antes del proximo forzado. Umbral: quedan <= 3*N-2 fichas
+//   (1 forzada + 2 de cooldown + 1 forzada... para N=2 eso es 4).
 // - Cooldown/tope: justo salio un Emotional (cooldown de 2 tiradas) o ya
 //   se llego a EMO_MAX -- excluye Emotional.
 // - Caso normal (ni una cosa ni la otra): NO filtra por Emotional en
@@ -441,7 +444,7 @@ function pickTitleFor(token, band) {
 
   const remaining = state.deck.filter(t => !t.used).length; // fichas que quedan en el mazo, incluyendo esta
   const faltanParaMinimo = EMO_MIN - state.emoCount;
-  const emoForced = faltanParaMinimo > 0 && remaining <= faltanParaMinimo;
+  const emoForced = faltanParaMinimo > 0 && remaining <= (3 * faltanParaMinimo - 2);
   const emoBloqueado = !emoForced && (state.emoCooldown > 0 || state.emoCount >= EMO_MAX);
 
   let filtered = candidates;
@@ -461,24 +464,22 @@ function finishDraw(token, band) {
 }
 
 // Sortea la proxima ficha: candidateTokens() ya aplica filtros "Quiero ver"
-// y las reglas de racha. Prueba tokens al azar del pool; si un token no
-// tiene oferta real (band o titulo exacto no disponible), se DESCARTA y se
-// prueba con otro -- nunca se sustituye su Era/Banda por otra. Recien si
-// se agota el pool entero sin encontrar nada, es "no hay resultados" real.
+// y las reglas de racha. Elige UN token al azar del pool y lo resuelve --
+// una sola pasada, sin reintentar con otro token si este falla. Para MVP se
+// asume disponibilidad real en todos los tokens (ver pendiente de
+// notificacion/cadencia de descarga de series para cuando eso deje de ser
+// cierto) -- construir logica de descarte para un caso que hoy
+// practicamente no ocurre es resolver algo que todavia no es un problema.
+// Si band o titulo salen null, drawNext() devuelve null tal cual, sin
+// insistir con otro token del pool.
 // "Buscar de nuevo" llama a esto tal cual, sin bypass de reglas.
 function drawNext() {
-  let pool = candidateTokens();
-  while (pool.length > 0) {
-    const idx = Math.floor(Math.random() * pool.length);
-    const token = pool[idx];
-    const band = resolveBand(token);
-    if (band !== null) {
-      const result = finishDraw(token, band);
-      if (result) return result;
-    }
-    pool = pool.slice(0, idx).concat(pool.slice(idx + 1)); // este token no tenia oferta real -- se descarta, se prueba otro
-  }
-  return null;
+  const pool = candidateTokens();
+  if (pool.length === 0) return null;
+  const token = pool[Math.floor(Math.random() * pool.length)];
+  const band = resolveBand(token);
+  if (band === null) return null;
+  return finishDraw(token, band);
 }
 
 // Copia profunda de todos los campos que "Deshacer" necesita restaurar. Se toma
@@ -525,25 +526,31 @@ function reconcilePendingConfirms(pendingConfirms) {
   return { usedTitles: [...SEEN_IN_SHEET, ...extraTitles], pendingConfirms: survivors };
 }
 
-// Confirma un pick del ciclo normal: marca la ficha del mazo como usada (y si
-// era Clasica, tambien descuenta la banda real de la bolsa caliente), agrega
-// el titulo a usedTitles y al historial, y actualiza los contadores de racha
-// (lastEra/lastEraStreak, lastBand/lastBandStreak) y el cooldown de Emotional
-// que usan las reglas en la proxima tirada.
+// Confirma un pick del ciclo normal: marca la ficha del mazo como usada (si
+// vino del mazo -- ver mas abajo), descuenta la banda real de la bolsa
+// caliente si era Clasica, agrega el titulo a usedTitles y al historial, y
+// actualiza los contadores de racha (lastEra/lastEraStreak,
+// lastBand/lastBandStreak) y el cooldown de Emotional que usan las reglas
+// en la proxima tirada.
 function commitPick(pick) {
   state.lastAction = { type: 'ciclo', malId: pick.title.malId, snapshot: snapshotForUndo() };
   // Los picks outOfDeck (fallback fuera de mazo, ver candidateTokens) no
-  // vinieron de una ficha real del mazo ni de la bolsa caliente -- fueron
-  // una excepcion puntual armada directo desde el catalogo. No hay ficha ni
-  // cupo que gastar, asi que se saltan ambos pasos a proposito.
+  // vinieron de una ficha real del mazo -- no hay ficha que marcar, se
+  // salta a proposito.
   if (!pick.token.outOfDeck) {
     const idx = state.deck.findIndex(t => !t.used && t.era === pick.token.era && (t.band === pick.token.band || t.band === null));
     if (idx >= 0) state.deck[idx].used = true;
-    if (pick.token.era === 'Clasica') {
-      ensureClasicaBag();
-      const bagIdx = state.clasicaBag.findIndex(t => !t.used && t.band === pick.token.band);
-      if (bagIdx >= 0) state.clasicaBag[bagIdx].used = true;
-    }
+  }
+  // La bolsa caliente es un recurso aparte del mazo: acumula de por vida
+  // para mantener las proporciones reales de Clasica en el largo plazo. Un
+  // pick outOfDeck sigue siendo un titulo real confirmado -- si no se
+  // descuenta igual, la bolsa cree que queda mas oferta de la que en
+  // realidad queda. Por eso esto NO depende de outOfDeck, solo de que sea
+  // Clasica.
+  if (pick.token.era === 'Clasica') {
+    ensureClasicaBag();
+    const bagIdx = state.clasicaBag.findIndex(t => !t.used && t.band === pick.token.band);
+    if (bagIdx >= 0) state.clasicaBag[bagIdx].used = true;
   }
   state.usedTitles.push(pick.title.title);
   state.pendingConfirms.push({ title: pick.title.title, malId: pick.title.malId, ts: Date.now() });
