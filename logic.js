@@ -145,10 +145,15 @@ async function fetchCsv(path) {
   return Papa.parse(text, { header: true, skipEmptyLines: true }).data;
 }
 
-// Punto de entrada de los datos: lee catalogo.csv y nuevas_temporadas.csv, aplica
-// los 2 filtros del sorteo (Pendiente Nueva Temporada = X, y disponibilidad de
-// plataforma) y separa todo en los 4 pools que usa el resto de la app
-// (MAIN_POOL = Dorada+Moderna+Clasica, LARGA_POOL, ADULTO_POOL, REP_POOL).
+// Punto de entrada de los datos: lee catalogo.csv y nuevas_temporadas.csv.
+// Del catalogo arma: MAIN_POOL/LARGA_POOL/ADULTO_POOL/REP_POOL (filtrados
+// por disponibilidad y PendienteTemporada, lo que entra al sorteo),
+// LISTA_COMPLETA_POOL (todo, sin filtrar, para la pantalla Lista Completa),
+// FULL_ERA_POOL (todo Dorada/Moderna/Clasica sin filtrar, para calcular
+// proporciones del mazo) y SEEN_IN_SHEET (que Era ya esta Visto=TRUE en el
+// Sheet, fuente de verdad real -- ver reconcilePendingConfirms). De paso
+// parsea MAL_ID de cada fila (puede traer varios IDs relacionados
+// separados por ", ", el primero es el canonico).
 // Se llama una vez al abrir la app (ver loadState en ui.js).
 // URL del catalogo publicado desde Google Sheets (Archivo > Compartir >
 // Publicar en la web > CSV).
@@ -185,17 +190,17 @@ async function loadCatalog() {
     if (!ERA_SET.has(cat) && !OTHER_CATS.has(cat)) {
       catsDesconocidas.add(cat);
       continue;
+    } else {
+      const vistoRaw = String(r.Visto || '').trim().toUpperCase();
+      if (vistoRaw === 'TRUE') seenInSheet.push(r.Nombre);
     }
 
     // FULL_ERA_POOL: cuenta SIEMPRE, sin importar disponibilidad ni
     // temporada pendiente -- es el universo real para calcular proporciones.
     const rating = parseFloat(r.Calificacion) || 0;
     const band = ERA_SET.has(cat) ? (rating > 8.0 ? 'Excelente' : (rating >= 7.5 ? 'Buena' : 'Normal')) : null;
-    if (ERA_SET.has(cat)) {
+    if (ERA_SET.has(cat))
       fullEra.push({ era: cat, band });
-      const vistoRaw = String(r.Visto || '').trim().toUpperCase();
-      if (vistoRaw === 'TRUE') seenInSheet.push(r.Nombre);
-    }
 
     const pend = (r.PendienteTemporada || '').trim() === 'X';
     const plat = (r.Plataforma || '').trim();
@@ -286,6 +291,9 @@ function ensureClasicaBag() {
 // viene con las primeras 6 elecciones del orden original marcadas como hechas
 // (Assassination Classroom...Kakegurui), para no perder el progreso real que ya
 // existia antes de que existiera esta app.
+// PENDIENTE (prioridad Alta): migrar estas 6 al Sheet con fecha real, y que
+// el Historial cargue desde ahi ordenado por fecha -- este hardcode
+// desaparece cuando eso pase (ver CONTEXTO_TRASPASO).
 function seedInitialState() {
   const deck = freshDeck();
   function useToken(era, band) { const t = deck.find(x => !x.used && x.era === era && x.band === band); if (t) t.used = true; }
@@ -349,7 +357,7 @@ async function saveState() {
 // Candidatas validas para la proxima tirada del mazo principal. 2 capas:
 // 1) Filtros "Quiero ver" (Era/Calidad) si estan activos -- estos SON una
 //    eleccion explicita, asi que tienen prioridad y de paso saltan la regla
-//    de racha para ese eje 
+//    de racha para ese eje
 // 2) Si no hay filtro en ese eje, aplica la regla de racha: permite 2 veces
 //    seguidas de la misma Era o el mismo Tipo, pero bloquea la 3ra -- salvo
 //    que ya no quede ninguna alternativa (la bolsa se queda sin opcion), en
@@ -376,15 +384,12 @@ function candidateTokens() {
 
   // Fallback fuera de mazo: un filtro "Quiero ver" activo se arma un pool "suelto"
   // directo desde MAIN_POOL (catalogo disponible real) respetando los mismos filtros. 
-  // Estas fichas se marcan outOfDeck:true: al confirmarse NO gastan cupo del mazo ni de la bolsa
-  // caliente de Clasica, porque no vinieron de ahi
-  // Solo si esto TAMBIEN sale vacio es un "sin resultados" de verdad.
   if (pool.length === 0 && (filters.era || filters.calidad)) {
     const usedSet = new Set(state.usedTitles);
     let extra = MAIN_POOL.filter(a => !usedSet.has(a.title));
     if (filters.era) extra = extra.filter(a => a.era === filters.era);
     if (filters.calidad) extra = extra.filter(a => a.band === filters.calidad);
-    pool = extra.map(a => ({ era: a.era, band: a.band, used: false, outOfDeck: true }));
+    pool = extra.map(a => ({ era: a.era, band: a.band, used: false }));
   }
 
   return pool;
@@ -394,7 +399,6 @@ function candidateTokens() {
 // (Dorada/Moderna) la devuelve tal cual. Si es Clasica (band=null):
 // - Con filtro de Calidad activo: la banda ya la elegiste vos, la bolsa no
 //   participa. Se chequea directo el catalogo real; si no hay oferta, null
-//   -- drawNext() descarta este token y prueba otro, sin sustituir nada.
 // - Sin filtro: la bolsa decide al azar (pesada por el catalogo real de
 //   Clasica) para mantener las proporciones reales en el largo plazo. Si
 //   la banda que toca no tiene oferta real ahora mismo, tambien null --
@@ -420,66 +424,73 @@ function resolveBand(token) {
   return pool[Math.floor(Math.random() * pool.length)].band;
 }
 
-// "Emotional" se decide en 3 casos, sin zona intermedia:
-// - Forzado de piso: si faltan N Emotional para llegar a EMO_MIN, hace
-//   falta arrancar a tiempo, no en la ultima ficha posible -- cada
-//   Emotional forzado (salvo el ultimo) necesita 2 fichas de cooldown
-//   despues antes del proximo forzado. Umbral: quedan <= 3*N-2 fichas
-//   (1 forzada + 2 de cooldown + 1 forzada... para N=2 eso es 4).
-// - Cooldown/tope: justo salio un Emotional (cooldown de 2 tiradas) o ya
-//   se llego a EMO_MAX -- excluye Emotional.
-// - Caso normal (ni una cosa ni la otra): NO filtra por Emotional en
-//   absoluto -- todos los candidatos compiten parejo, sea cual sea su
-//   Emotional. Antes este caso tiraba una moneda de ~20% por tirada, lo
-//   que con pools chicos (ej. Clasica-Excelente con 2 Emotional y 2 que no)
-//   partia el pool en dos grupos desparejos (80%/20%) en vez de dejarlos
-//   competir parejo -- eso ya no pasa.
-// En cualquier caso, si el filtro resultante da 0 candidatos, cede sobre
-// el mismo Era+Banda (Emotional es ritmo interno, no un filtro tuyo).
+// EMO_MIN/EMO_MAX: piso y techo de titulos Emotional por mazo de 24. Quien
+// decide CUANDO forzar o bloquear es drawNext() (ver mas abajo, necesita
+// saberlo ANTES de elegir el token); esta funcion solo aplica el filtro ya
+// decidido sobre los candidatos de un token+banda ya resueltos. Si el
+// filtro resultante da 0, cede sobre el mismo Era+Banda (Emotional es
+// ritmo interno, no un filtro tuyo).
 const EMO_MIN = 3, EMO_MAX = 5;
-function pickTitleFor(token, band) {
+function pickTitleFor(token, band, emoForced, emoBloqueado) {
   const usedSet = new Set(state.usedTitles);
   let candidates = MAIN_POOL.filter(a => a.era === token.era && a.band === band && !usedSet.has(a.title));
   if (candidates.length === 0) return null;
 
-  const remaining = state.deck.filter(t => !t.used).length; // fichas que quedan en el mazo, incluyendo esta
-  const faltanParaMinimo = EMO_MIN - state.emoCount;
-  const emoForced = faltanParaMinimo > 0 && remaining <= (3 * faltanParaMinimo - 2);
-  const emoBloqueado = !emoForced && (state.emoCooldown > 0 || state.emoCount >= EMO_MAX);
-
   let filtered = candidates;
   if (emoForced) filtered = candidates.filter(a => a.emotional === true);
-  else if (emoBloqueado) filtered = candidates.filter(a => a.emotional === false);
+  if (emoBloqueado) filtered = candidates.filter(a => a.emotional === false);
   if (filtered.length > 0) candidates = filtered;
 
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
 // Empaqueta el resultado final de un sorteo: {token, title} listo para
-// mostrar en pantalla y, si se confirma, para pasar a commitPick(). 
-function finishDraw(token, band) {
-  const title = pickTitleFor(token, band);
+// mostrar en pantalla y, si se confirma, para pasar a commitPick().
+function finishDraw(token, band, emoForced, emoBloqueado) {
+  const title = pickTitleFor(token, band, emoForced, emoBloqueado);
   if (!title) return null;
-  return { token: { era: token.era, band, outOfDeck: !!token.outOfDeck }, title };
+  return { token: { era: token.era, band }, title };
 }
 
+// Inicas bandas que tienen titulos Emotional son Excelente y Buena (en cualquier Era) 
+const EMO_BANDS = ['Excelente', 'Buena'];
+
 // Sortea la proxima ficha: candidateTokens() ya aplica filtros "Quiero ver"
-// y las reglas de racha. Elige UN token al azar del pool y lo resuelve --
-// una sola pasada, sin reintentar con otro token si este falla. Para MVP se
-// asume disponibilidad real en todos los tokens (ver pendiente de
-// notificacion/cadencia de descarga de series para cuando eso deje de ser
-// cierto) -- construir logica de descarte para un caso que hoy
-// practicamente no ocurre es resolver algo que todavia no es un problema.
-// Si band o titulo salen null, drawNext() devuelve null tal cual, sin
-// insistir con otro token del pool.
+// y las reglas de racha.
+// Excepcion: cuando toca forzar Emotional, se restringe la eleccion a 
+// los tokens con banda Excelente/Buena (o Clasica, que puede resolver a esa banda via la bolsa).
 // "Buscar de nuevo" llama a esto tal cual, sin bypass de reglas.
 function drawNext() {
   const pool = candidateTokens();
   if (pool.length === 0) return null;
-  const token = pool[Math.floor(Math.random() * pool.length)];
+
+  const remaining = state.deck.filter(t => !t.used).length;
+  const faltanParaMinimo = EMO_MIN - state.emoCount;
+  const emoForced = faltanParaMinimo > 0 && remaining <= (3 * faltanParaMinimo - 2);
+  const emoBloqueado = !emoForced && (state.emoCooldown > 0 || state.emoCount >= EMO_MAX);
+
+  let elegibles = pool;
+  if (emoForced) {
+    const conOferta = pool.filter(t => EMO_BANDS.includes(t.band) || (t.era === 'Clasica' && t.band === null));
+    if (conOferta.length > 0) elegibles = conOferta;
+  }
+
+  const token = elegibles[Math.floor(Math.random() * elegibles.length)];
   const band = resolveBand(token);
-  if (band === null) return null;
-  return finishDraw(token, band);
+  if (band !== null) {
+    const result = finishDraw(token, band, emoForced, emoBloqueado);
+    if (result) return result;
+  }
+
+  if (emoForced) {
+    const usedSet = new Set(state.usedTitles);
+    const candidatos = MAIN_POOL.filter(a => EMO_BANDS.includes(a.band) && a.emotional && !usedSet.has(a.title));
+    if (candidatos.length > 0) {
+      const title = candidatos[Math.floor(Math.random() * candidatos.length)];
+      return { token: { era: title.era, band: title.band }, title };
+    }
+  }
+  return null;
 }
 
 // Copia profunda de todos los campos que "Deshacer" necesita restaurar. Se toma
@@ -527,26 +538,17 @@ function reconcilePendingConfirms(pendingConfirms) {
 }
 
 // Confirma un pick del ciclo normal: marca la ficha del mazo como usada (si
-// vino del mazo -- ver mas abajo), descuenta la banda real de la bolsa
-// caliente si era Clasica, agrega el titulo a usedTitles y al historial, y
-// actualiza los contadores de racha (lastEra/lastEraStreak,
+// existe una real que matchee -- ver mas abajo), descuenta la banda real de
+// la bolsa caliente si era Clasica, agrega el titulo a usedTitles y al
+// historial, y actualiza los contadores de racha (lastEra/lastEraStreak,
 // lastBand/lastBandStreak) y el cooldown de Emotional que usan las reglas
 // en la proxima tirada.
 function commitPick(pick) {
   state.lastAction = { type: 'ciclo', malId: pick.title.malId, snapshot: snapshotForUndo() };
-  // Los picks outOfDeck (fallback fuera de mazo, ver candidateTokens) no
-  // vinieron de una ficha real del mazo -- no hay ficha que marcar, se
-  // salta a proposito.
-  if (!pick.token.outOfDeck) {
-    const idx = state.deck.findIndex(t => !t.used && t.era === pick.token.era && (t.band === pick.token.band || t.band === null));
-    if (idx >= 0) state.deck[idx].used = true;
-  }
+  const idx = state.deck.findIndex(t => !t.used && t.era === pick.token.era && (t.band === pick.token.band || t.band === null));
+  if (idx >= 0) state.deck[idx].used = true;
   // La bolsa caliente es un recurso aparte del mazo: acumula de por vida
-  // para mantener las proporciones reales de Clasica en el largo plazo. Un
-  // pick outOfDeck sigue siendo un titulo real confirmado -- si no se
-  // descuenta igual, la bolsa cree que queda mas oferta de la que en
-  // realidad queda. Por eso esto NO depende de outOfDeck, solo de que sea
-  // Clasica.
+  // para mantener las proporciones reales de Clasica en el largo plazo.
   if (pick.token.era === 'Clasica') {
     ensureClasicaBag();
     const bagIdx = state.clasicaBag.findIndex(t => !t.used && t.band === pick.token.band);
