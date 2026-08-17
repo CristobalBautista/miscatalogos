@@ -688,16 +688,34 @@ async function revealPickNormal(pick) {
   // pedido en vez del real era justo el bug reportado ("Era Clasica -
   // Normal" en un titulo que en realidad era Moderna).
   posterFrame.style.background = posterFrameGradient(t.era, t.band);
+  scrollToCicloTitle();
+  // console.log("before poster el")
+  // await wait(2000);
   posterEl.innerHTML = t.poster
     ? `<img src="${esc(t.poster)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🎬'}))">`
     : '🎬';
+  //scrollToCicloTitle();
+  // console.log("before poster frame")
+  // await wait(2000);
   posterFrame.classList.add('fade-in');
   await wait(150);
+  //scrollToCicloTitle();
+  // console.log("before era")
+  // await wait(2000);
   addTag(tags, ERA_LABELS[t.era] || t.era, 'era-' + t.era);
   await wait(500);
+  //scrollToCicloTitle();
+  // console.log("before tags banda")
+  // await wait(2000);
   addTag(tags, t.band, 'band-' + t.band);
   await wait(500);
+  //scrollToCicloTitle();
+  // console.log("before emotional")
+  // await wait(2000);
   if (t.emotional) { addTag(tags, 'Emotional', 'emo'); await wait(300); }
+  //scrollToCicloTitle();
+  // console.log("before title")
+  // await wait(2000);
   titleEl.textContent = t.title;
   titleEl.classList.add('fade-in');
   if (t.nota) {
@@ -705,10 +723,22 @@ async function revealPickNormal(pick) {
     notaEl.classList.add('fade-in', 'has-content');
   }
   await wait(200);
+  //scrollToCicloTitle();
+  // console.log("before generos")
+  // await wait(2000);
   renderGenresThemes(genresEl, t);
   await wait(200);
+  //scrollToCicloTitle();
+  // console.log("before plataforma")
+  // await wait(2000);
   platEl.innerHTML = platformChipsHtml(t.plataforma);
+  //scrollToCicloTitle();
+  // console.log("before plataforma chips")
+  // await wait(2000);
   platEl.classList.add('fade-in');
+  //scrollToCicloTitle();
+  // console.log("before sinopsis")
+  // await wait(2000);
   if (t.sinopsis) {
     sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)}</div>
       <span class="card-sinopsis-toggle" id="rvSinopsisToggle" role="button" tabindex="0">Ver más</span>`;
@@ -721,6 +751,7 @@ async function revealPickNormal(pick) {
     });
   }
 }
+
 async function revealPickExtra(item, cat) {
   setupCardSkeleton();
   const posterFrame = document.getElementById('rvPosterFrame');
@@ -788,22 +819,27 @@ function disableAllActionButtons(disabled) {
 // arriba, el titulo queda visible como referencia en vez de quedar tapado.
 function scrollToCicloTitle() {
   const el = document.getElementById('cicloTitle');
-  if (!el) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-  const rect = el.getBoundingClientRect();
-  const targetY = Math.max(0, window.scrollY + rect.top - 8); // 8px de aire arriba del titulo
-  window.scrollTo({ top: targetY, behavior: 'smooth' });
+  el.scrollIntoView({ behavior: "smooth" })
 }
 
 // ============ FLUJO: SORTEO NORMAL DEL CICLO ============
 // Boton "Elegir siguiente": gira el dado, calcula el pick con drawNext(),
 // lo muestra, y deja los botones Confirmar/Buscar de nuevo listos.
 async function startDrawNormal() {
+  // console.log("\n\nbefore scroll")
+  // await wait(2000);
   scrollToCicloTitle();
+  // console.log("before disable")
+  // await wait(2000);
   disableAllActionButtons(true);
+  // console.log("before hiddens")
+  // await wait(2000);
   document.getElementById('normalRow').classList.add('hidden');
   document.getElementById('confirmRow').classList.add('hidden');
   document.getElementById('gateBox').classList.add('hidden');
   const myGen = ++drawGen;
+  // console.log("before play reveal")
+  // await wait(2000);
   const ok = await playRevealAnimation(myGen);
   if (!ok) return; // se cancelo (se navego afuera de Ciclo mientras giraba)
 
@@ -886,7 +922,7 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
 // pidio voluntariamente via boton Cartoon o un pill pendiente (ahi NO
 // toca el ciclo para nada).
 async function startDrawExtra(cat, fromGate) {
-  scrollToCicloTitle();
+  //scrollToCicloTitle();
   disableAllActionButtons(true);
   state.extra = { category: cat, fromGate: !!fromGate };
   document.getElementById('gateBox').classList.add('hidden');
