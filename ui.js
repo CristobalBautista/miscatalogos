@@ -784,13 +784,14 @@ function disableAllActionButtons(disabled) {
   document.querySelectorAll('.pill').forEach(p => p.disabled = disabled);
 }
 
-
-// Item 6: al Elegir/Buscar de nuevo, el scroll apunta al titulo "Ruleta de
-// Anime" (no al tope absoluto 0,0) -- asi si hay algo de header/status bar
+// Al Elegir/Buscar de nuevo, el scroll apunta al titulo "Ruleta de
+// Anime"  -- asi si hay algo de header/status bar
 // arriba, el titulo queda visible como referencia en vez de quedar tapado.
 function scrollToCicloTitle() {
   const el = document.getElementById('cicloTitle');
-  el.scrollIntoView({ behavior: "smooth" })
+  const rect = el.getBoundingClientRect();
+  const targetY = window.scrollY + rect.top - 8; // 8px de aire arriba del titulo
+  window.scrollTo({ top: targetY, behavior: 'smooth' });
 }
 
 // ============ FLUJO: SORTEO NORMAL DEL CICLO ============
