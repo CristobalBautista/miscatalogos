@@ -9,7 +9,8 @@
 // columnas NUEVAS. Client ID de https://myanimelist.net/apiconfig
 // (App Type: hobbyist).
 
-const SHEET_NAME_ENRICH = 'Anime';
+const ANIME_SHEET = 'Anime';
+const NEW_SEASONS_SHEET = 'Nuevas Temporadas';
 const MAL_CLIENT_ID = 'de58a231f54a742f006022e46f47f274';
 const MAL_BASE = 'https://api.myanimelist.net/v2/anime/';
 const MAL_FIELDS = "alternative_titles,start_date,end_date,synopsis,mean,popularity,media_type,status,genres,num_episodes,pictures";
@@ -24,33 +25,39 @@ const GENRES_THEMES_DICTIONARY_SPANISH = {
   1: "Accion", 2: "Aventura", 4: "Comedia", 6: "Mitologia", 7: "Misterio", 8: "Drama", 10: "Fantasia",
   11: "Estrategia", 13: "Historicos", 14: "Terror", 17: "Artes Marciales", 18: "Robots Gigantes",
   19: "Musica", 20: "Parodia", 22: "Romance", 23: "Vida Escolar", 24: "Ciencia Ficcion", 26: "Romance entre Chicas",
-  28: "Romance entre Chicos", 29: "Espacial", 30: "Deportes", 32: "Vampiros", 36: "Vida Diaria",
-  37: "Sobrenatural", 38: "Militar", 40: "Psicológico", 41: "Suspenso", 47: "Comida Gourmet",
+  28: "Romance entre Chicos", 29: "Espacial", 30: "Deportes", 32: "Vampiros", 36: "Vida Cotidiana",
+  37: "Sobrenatural", 38: "Militar", 40: "Psicológico", 41: "Suspenso", 47: "Gastronomia",
   50: "Protas Adultos", 53: "Cuidado de Niños", 55: "Delincuentes", 57: "Comedia Visual", 60: "Idols",
-  62: "Isekai/Otro Mundo", 63: "Sanar/Pacifico", 64: "Poligono Romantico", 66: "Chicas Mágicas",
-  68: "Mafia/Crimen Organizado", 69: "Cultura Otaku", 70: "Artes Escénicas", 72: "Reencarnación",
+  62: "Isekai", 63: "Sanar/Pacifico", 64: "Poligono Romantico", 66: "Chicas Mágicas",
+  68: "Mafia", 69: "Cultura Otaku", 70: "Artes Escénicas", 72: "Reencarnación",
   78: "Viajes en el Tiempo", 82: "Fantasia Moderna"
 }
 
 // Columnas nuevas que este script escribe
-const COLS_MAL = [
+const COLS_MAL_CATALOGO = [
   'MAL_ID', "MAL_NombreJap", "MAL_NombreEng", "MAL_Sinonimos", "Nombre_Comparado", "Nombre",
   'Popularidad', 'MAL_Puntaje', 'MAL_Eps', 'MAL_PendienteFinalizar', 'Generos', 'Temas',
   'FechaInicial', 'FechaFinal', 'Poster', 'PosterMediano', 'UltimaLectura', "Sinopsis",
 ];
+const COLS_MAL_NEW_SEASONS = [
+  'MAL_ID', "MAL_NombreJap", "MAL_NombreEng", "MAL_Sinonimos", "Nombre_Comparado", "Nombre", "MAL_Eps",
+  'MAL_PendienteFinalizar', 'Generos', 'Temas', 'FechaInicial', 'FechaFinal', 'Poster', 'PosterMediano',
+  'UltimaLectura', "Sinopsis",
+];
 
 // Los 2 modos, elegis cual correr:
-function importarPendientes() { importarCatalogo(false); }
-function importarTodo() { importarCatalogo(true); }
+function importarTodo() { importarCatalogo(ANIME_SHEET, COLS_MAL_CATALOGO, true); }
+function importarPendientes() { importarCatalogo(ANIME_SHEET, COLS_MAL_CATALOGO, false); }
+function importarNuevasTemp() { importarCatalogo(NEW_SEASONS_SHEET, COLS_MAL_NEW_SEASONS, true); }
 
-function importarCatalogo(modoCompleto) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_ENRICH);
+function importarCatalogo(goalSheet, colsRequired, modoCompleto) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(goalSheet);
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
 
   const col = {};
-  COLS_MAL.forEach(h => col[h] = headers.indexOf(h));
-  const faltantes = COLS_MAL.filter(h => col[h] === -1);
+  colsRequired.forEach(h => col[h] = headers.indexOf(h));
+  const faltantes = colsRequired.filter(h => col[h] === -1);
   if (faltantes.length > 0) {
     Logger.log('Faltan estas columnas en el encabezado: ' + faltantes.join(', '));
     return;
@@ -58,7 +65,7 @@ function importarCatalogo(modoCompleto) {
 
   const startTime = Date.now();
   const colNombre = headers.indexOf('NombreMio');
-  for (let i = 1; i <2; i++) {
+  for (let i = 1; i < data.length; i++) {
     if (Date.now() - startTime > TIME_BUDGET_MS) {
       Logger.log('Tope de tiempo alcanzado.');
       break;

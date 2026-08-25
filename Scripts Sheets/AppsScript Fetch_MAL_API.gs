@@ -19,6 +19,7 @@ function fetchMAL(id) {
       return sN && sN !== convertToLower(a.title) && sN !== convertToLower(titleEn);
     });
     return {
+      id: a.id,
       title: a.title,
       titleEn: titleEn,
       sinonimos: sinonimosUtiles,

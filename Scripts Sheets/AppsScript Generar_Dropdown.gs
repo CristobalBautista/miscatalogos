@@ -5,8 +5,11 @@
 // te convence, el dropdown permite igual escribir algo distinto a mano
 // (allowInvalid = true), no te encierra.
 
-function generarDropdownsFanName() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_ENRICH);
+function generarDropdownsAnime() { generarDropdownsFanName(ANIME_SHEET); }
+function generarDropdownsNewSeasons() { generarDropdownsFanName(NEW_SEASONS_SHEET); }
+
+function generarDropdownsFanName(goalSheet) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(goalSheet);
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
 

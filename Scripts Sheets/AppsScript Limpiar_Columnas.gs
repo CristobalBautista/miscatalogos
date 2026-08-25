@@ -7,7 +7,7 @@ function limpiarSinNombres() {
 }
 
 function limpiarColumnasMAL(colsALimpiar) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_ENRICH);
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ANIME_SHEET);
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const lastRow = sheet.getLastRow();
   colsALimpiar.forEach(h => {
