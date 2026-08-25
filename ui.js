@@ -14,11 +14,11 @@ function platformChipsHtml(plat) {
   const keys = detectPlatformKeys(plat);
   if (keys.length === 0) return `<span class="plat-chip"><span>📺 ${esc(plat || 'Sin dato')}</span></span>`;
   return keys.map(k => `<span class="plat-chip">
-      <img src="https://cdn.simpleicons.org/${PLATFORM_ICONS[k]}" alt="${k}" onerror="this.outerHTML='${PLATFORM_EMOJI[k]}'">
-      <img src="https://thesvg.org/icons/${PLATFORM_ICONS[k]}/default.svg" alt="${k}" onerror="this.outerHTML='${PLATFORM_EMOJI[k]}'">
-      <span>${k[0].toUpperCase() + k.slice(1)}</span>
+    <img src="https://thesvg.org/icons/${PLATFORM_ICONS[k]}/default.svg" alt="${k}" onerror="this.outerHTML='${PLATFORM_EMOJI[k]}'">
+    <span>${k[0].toUpperCase() + k.slice(1)}</span>
     </span>`).join('');
 }
+    // <img src="https://cdn.simpleicons.org/${PLATFORM_ICONS[k]}" alt="${k}" onerror="this.outerHTML='${PLATFORM_EMOJI[k]}'">
 // Igual que platformChipsHtml pero en texto plano (para modales que usan
 // textContent, como el de confirmar plataforma al elegir).
 function platformPlainNames(plat) {
