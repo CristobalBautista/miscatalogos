@@ -23,8 +23,8 @@ function compararNombres(mio, ingles, japones, sinonimos, actualNombreCheck) {
   return 'NOMBRE NO COINCIDE, REVISAR MAL_ID';
 }
 
-function devolverNombreFinal(mio, ingles, japones, check, actual) {
-  if (check === "Done") return actual;
+function devolverNombreFinal(mio, ingles, japones, nombreCheck, actual) {
+  if (nombreCheck === "Done") return actual;
 
   if (nombreCheck === "OK" || nombreCheck === 'FALTA NOMBRE PROPIO') {
     return ingles;

@@ -28,19 +28,25 @@
     <button class="config-gear" id="openConfig" aria-label="Configuración">⚙️</button>
     <div class="home-title">
       <h1>🎬 Mis Catálogos</h1>
-      <p style="color:var(--dim); font-size:12.5px;">Elige qué quieres organizar hoy</p>
+      <p style="color:var(--dim); font-size:12.5px;">Elige qué quieres ver hoy</p>
     </div>
     <button class="home-btn" id="goAnime">ANIME</button>
     <button class="home-btn disabled" id="goLive">LIVE ACTION</button>
     <button class="home-btn disabled" id="goMovies">PELÍCULAS</button>
     <button class="home-btn disabled" id="goCartoon">CARTOON</button>
-    <div class="theme-row" id="themeRow"></div>
   </div>
 
   <!-- CONFIGURACION (modal) -->
   <div id="configModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div class="modal-title">Configuración</div>
+      <div class="toggle-row">
+        <span>Modo Oscuro</span>
+        <label class="switch">
+          <input type="checkbox" id="themeToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
       <div class="toggle-row">
         <span>Modo Desarrollador</span>
         <label class="switch">
@@ -54,11 +60,11 @@
 
   <!-- ANIME landing -->
   <div id="view-anime" class="hidden">
-    <div class="back" id="backHomeFromAnime">← Inicio</div>
+    <div class="back" id="backHomeFromAnime">‹ INICIO</div>
     <div class="header"><h1>ANIME</h1></div>
 
     <div class="tri-btn-row">
-      <button class="tri-btn" id="animeGoCicloBtn">Seleccionar<br>por Ciclo</button>
+      <button class="tri-btn" id="animeGoCicloBtn">Ruleta<br>de Anime</button>
       <button class="tri-btn hidden" id="animeGoNTBtn">Nuevas<br>Temporadas</button>
       <button class="tri-btn" id="animeGoListaBtn">Ver Lista<br>Completa</button>
     </div>
@@ -70,7 +76,7 @@
     <div class="hist-table-wrap">
       <table class="hist-table" id="histTable">
         <thead><tr>
-          <th class="col-img">Imagen</th>
+          <th class="col-img"></th>
           <th>Nombre</th>
           <th>Era</th>
           <th>Tipo</th>
@@ -81,41 +87,63 @@
     </div>
   </div>
 
+  <!-- INFO MODAL: usado por Lista Completa para "no disponible" y "pendiente de estreno" -->
+  <div id="infoModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-title" id="infoModalTitle"></div>
+      <div class="gate-title" id="infoModalMsg" style="text-align:left;"></div>
+      <div class="gate-btns" id="infoModalBtns"></div>
+    </div>
+  </div>
+
   <!-- LISTA COMPLETA -->
   <div id="view-lista" class="hidden">
-    <div class="back" id="backAnimeFromLista">← ANIME</div>
+    <div class="back" id="backAnimeFromLista">‹ ANIME</div>
     <div class="header"><h1>Lista Completa</h1></div>
     <div class="nt-hint">Toca cualquier título para elegirlo como siguiente ahora mismo.</div>
-    <div class="lista-cards-toggle">
-      <button class="lista-toggle-btn" id="listaCols2Btn">2 columnas</button>
-      <button class="lista-toggle-btn" id="listaCols3Btn">3 columnas</button>
+    <div class="lista-filter-row">
+      <button class="lista-filter-icon" id="listaFilterToggle" aria-label="Filtros">⚙️</button>
+      <div class="lista-filter-drawer hidden" id="listaFilterDrawer">
+        <div class="fp-group-label">Columnas</div>
+        <div class="fp-pill-row">
+          <button class="fp-pill" data-cols="2" id="listaColsBtn2">2</button>
+          <button class="fp-pill" data-cols="3" id="listaColsBtn3">3</button>
+          <button class="fp-pill" data-cols="4" id="listaColsBtn4">4</button>
+        </div>
+        <div class="toggle-row" style="margin-top:12px;">
+          <span>Mostrar no disponibles</span>
+          <label class="switch">
+            <input type="checkbox" id="listaShowUnavailToggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
     </div>
+    <div class="lista-filter-backdrop hidden" id="listaFilterBackdrop"></div>
     <div class="lista-grid" id="listaGrid"></div>
+    <button type="button" class="lista-back-top hidden" id="listaBackTopBtn" aria-label="Volver arriba"><span class="chevron-up"></span></button>
   </div>
 
   <!-- NUEVAS TEMPORADAS -->
   <div id="view-nt" class="hidden">
-    <div class="back" id="backAnimeFromNT">← ANIME</div>
+    <div class="back" id="backAnimeFromNT">‹ ANIME</div>
     <div class="header"><h1>Nuevas Temporadas</h1></div>
-    <div class="nt-hint">Toca la que quieras ver ahora.</div>
+    <div class="nt-hint">Ya Disponibles</div>
     <div class="nt-grid" id="ntGrid"></div>
   </div>
 
   <!-- CICLO -->
   <div id="view-ciclo" class="hidden">
-    <div class="back" id="backAnimeFromCiclo">← ANIME</div>
+    <div class="back" id="backAnimeFromCiclo">‹ ANIME</div>
     <div class="header">
-      <h1>Ruleta de Anime</h1>
-      <p>Era Clásica / Era Dorada / Era Moderna</p>
-    </div>
-
-    <div id="devPanel" class="dev-panel hidden">
-      <div class="dev-panel-title">🛠 Modo Desarrollador — cupos del ciclo</div>
-      <div class="dev-era-block" id="devEraBlock"></div>
+      <h1 id="cicloTitle">Ruleta de Anime</h1>
     </div>
 
     <div id="filterPanel" class="hidden">
-      <button class="qv-toggle" id="qvToggle">QUIERO VER ▸</button>
+      <div class="qv-dev-row">
+        <button class="qv-toggle" id="qvToggle">QUIERO VER ▸</button>
+        <button class="qv-toggle dev-toggle-btn hidden" id="devToggle">DEV MODE ▸</button>
+      </div>
       <div class="qv-drawer hidden" id="qvDrawer">
         <div class="fp-group-label">Era</div>
         <div class="fp-pill-row">
@@ -125,9 +153,9 @@
         </div>
         <div class="fp-group-label">Calidad</div>
         <div class="fp-pill-row">
-          <button class="fp-pill" data-group="calidad" data-value="Elite">Bueno</button>
+          <button class="fp-pill" data-group="calidad" data-value="Excelente">Excelente</button>
+          <button class="fp-pill" data-group="calidad" data-value="Buena">Buena</button>
           <button class="fp-pill" data-group="calidad" data-value="Normal">Normal</button>
-          <button class="fp-pill" data-group="calidad" data-value="Ligera">Relax</button>
         </div>
         <div class="fp-group-label">Género <span class="fp-stub-tag">(no funcional aún)</span></div>
         <div class="fp-pill-row">
@@ -138,27 +166,41 @@
           <button class="fp-pill" data-group="genero" data-value="Suspenso">Suspenso</button>
         </div>
       </div>
+
+      <div class="dev-panel qv-drawer hidden" id="devPanel">
+        <div class="dev-panel-title">Cupos del ciclo</div>
+        <div class="dev-stats-row">
+          <div class="dev-stat"><div class="dev-stat-num" id="statPos">0/18</div><div class="dev-stat-label">Ciclo</div></div>
+          <div class="dev-stat"><div class="dev-stat-num" id="statEmo">0/5</div><div class="dev-stat-label">Emotional</div></div>
+          <div class="dev-stat"><div class="dev-stat-num" id="statCycleN">1</div><div class="dev-stat-label">N° ciclo</div></div>
+        </div>
+        <div class="dev-era-block" id="devEraBlock"></div>
+
+        <!-- DESLIZADORES DE COLOR -- COMENTADO (colores ya definidos, ver
+        :root/[data-theme=light] en styles.css). Descomentar este bloque Y el
+        bloque correspondiente en ui.js si hace falta volver a ajustar.
+        <div class="dev-panel-title" style="margin:16px 0 8px;">Colores (prueba en vivo)</div>
+        <div class="dev-slider-row"><label>Dorada</label><input type="range" min="0" max="100" id="sliderDorada" class="dev-slider"><span class="dev-color-name" id="nameDorada"></span></div>
+        <div class="dev-slider-row"><label>Clásica</label><input type="range" min="0" max="100" id="sliderClasica" class="dev-slider"><span class="dev-color-name" id="nameClasica"></span></div>
+        <div class="dev-slider-row"><label>Excelente</label><input type="range" min="0" max="100" id="sliderExcelente" class="dev-slider"><span class="dev-color-name" id="nameExcelente"></span></div>
+        <div class="dev-slider-row"><label>Buena</label><input type="range" min="0" max="100" id="sliderBuena" class="dev-slider"><span class="dev-color-name" id="nameBuena"></span></div>
+        <div class="dev-slider-row"><label>Normal</label><input type="range" min="0" max="100" id="sliderNormal" class="dev-slider"><span class="dev-color-name" id="nameNormal"></span></div>
+        <div class="dev-slider-row"><label>Tags</label><input type="range" min="0" max="100" id="sliderTags" class="dev-slider"><span class="dev-color-name" id="nameTags"></span></div>
+        <button type="button" class="btn-secondary" id="recomendarColoresBtn" style="width:100%;margin-top:8px;">✨ Colores recomendados</button>
+        -->
+
+        <button type="button" class="btn-secondary" id="resetStateBtn" style="width:100%;margin-top:14px;">↺ Reiniciar estado (prueba)</button>
+      </div>
     </div>
 
     <div class="pending-row" id="pendingRow"></div>
-
-    <div class="anim-style-row">
-      <label for="animStyleSelect" class="anim-style-label">Animación</label>
-      <select id="animStyleSelect" class="anim-style-select">
-        <option value="cards">🎴 Tarjetas girando</option>
-        <option value="wheel">🎡 Ruleta</option>
-        <option value="slots">🎰 Tragamonedas</option>
-      </select>
-    </div>
-
-    <div class="dice-wrap" id="diceWrap"></div>
 
     <div class="card" id="cardArea">
       <div class="card-empty">Presiona "Elegir siguiente" para empezar</div>
     </div>
 
     <div id="gateBox" class="hidden">
-      <div class="gate-title">✅ Completaste el ciclo. Resuelve lo pendiente o continúa.</div>
+      <div class="gate-title">✅ Ok suficiente anime, ¿ahora una larga en serio o un cartoon adulto?</div>
       <div class="gate-btns">
         <button class="btn-extra" id="gateAdultoBtn">🎬 Siguiente Adulta</button>
         <button class="btn-extra" id="gateLargaBtn">📽️ Siguiente Larga</button>
@@ -174,18 +216,8 @@
       <button class="btn-secondary" id="redoBtn">🔄 Buscar de nuevo</button>
       <button class="btn-primary" id="confirmBtn">✅ Confirmar serie</button>
     </div>
-    <div class="btn-row hidden" id="confirmExtraRow">
-      <button class="btn-secondary" id="redoExtraBtn">🔄 Buscar de nuevo</button>
-      <button class="btn-primary" id="confirmExtraBtn">✅ Confirmar serie</button>
-    </div>
     <div class="btn-row hidden" id="continueExtraRow">
       <button class="btn-ghost" id="continueExtraBtn">➡️ Mejor continuar ciclo</button>
-    </div>
-
-    <div class="stats-row">
-      <div class="stat"><div class="stat-num" id="statPos">0/18</div><div class="stat-label">Ciclo</div></div>
-      <div class="stat"><div class="stat-num" id="statEmo">0/5</div><div class="stat-label">Emotional</div></div>
-      <div class="stat"><div class="stat-num" id="statCycleN">1</div><div class="stat-label">N° ciclo</div></div>
     </div>
 
     <div class="deck">
