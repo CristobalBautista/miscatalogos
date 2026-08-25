@@ -1,4 +1,4 @@
-# 📋 Contexto — Ruleta de Anime / Mis Catálogos (traspaso a chat nuevo v4.0)
+# 📋 Contexto — Ruleta de Anime / Mis Catálogos 4.0
 
 **Pegar este documento como primer mensaje del chat nuevo, junto con los archivos adjuntos actuales:** `index.html`, `styles.css`, `logic.js`, `ui.js`.
 
