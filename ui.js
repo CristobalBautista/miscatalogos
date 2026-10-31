@@ -12,7 +12,7 @@
 // con icono (usa detectPlatformKeys de logic.js).
 function platformChipsHtml(plat) {
   const keys = detectPlatformKeys(plat);
-  if (keys.length === 0) return `<span class="plat-chip"><span>📺 ${esc(plat || 'Sin dato')}</span></span>`;
+  if (keys.length === 0) return `<span class="plat-chip"><span>📺 ${esc(plat || tr('platform.sinDato'))}</span></span>`;
   return keys.map(k => `<span class="plat-chip">
     <img src="https://thesvg.org/icons/${PLATFORM_ICONS[k]}/default.svg" alt="${k}" onerror="this.outerHTML='${PLATFORM_EMOJI[k]}'">
     <span>${k[0].toUpperCase() + k.slice(1)}</span>
@@ -23,9 +23,58 @@ function platformChipsHtml(plat) {
 // textContent, como el de confirmar plataforma al elegir).
 function platformPlainNames(plat) {
   const keys = detectPlatformKeys(plat);
-  if (keys.length === 0) return plat || 'Sin dato';
+  if (keys.length === 0) return plat || tr('platform.sinDato');
   return keys.map(k => k[0].toUpperCase() + k.slice(1)).join(', ');
 }
+
+// ============ IDIOMAS: aplicar al DOM ============
+// Recorre todos los elementos marcados con data-i18n (texto plano, via
+// textContent) y data-i18n-html (contenido con <br>, via innerHTML -- seguro
+// porque el valor viene siempre del diccionario interno I18N, nunca de
+// input del usuario ni del catalogo). Despues reconstruye a mano los 3
+// textos que no son estaticos (dependen de estado: QUIERO VER/DEV MODE con
+// flecha abierta/cerrada, y los 3 aria-label que no tienen marcador HTML).
+// Se llama una vez al arrancar (loadState) y de nuevo cada vez que se elige
+// un idioma nuevo en Configuracion.
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = tr(el.getAttribute('data-i18n'));
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => {
+    el.innerHTML = tr(el.getAttribute('data-i18n-html'));
+  });
+  document.getElementById('openConfig').setAttribute('aria-label', tr('config.ariaLabel'));
+  document.getElementById('listaFilterToggle').setAttribute('aria-label', tr('lista.ariaFiltros'));
+  document.getElementById('listaBackTopBtn').setAttribute('aria-label', tr('lista.volverArriba'));
+  // QUIERO VER / DEV MODE: su texto normal ya viene de data-i18n (arriba),
+  // pero el click handler de cada uno le agrega una flecha (▸/▾) aparte
+  // segun el drawer este abierto o cerrado -- hay que re-agregarla aca
+  // tambien, si no se pierde al cambiar de idioma con el drawer abierto.
+  const qvDrawer = document.getElementById('qvDrawer');
+  const qvToggle = document.getElementById('qvToggle');
+  qvToggle.textContent = tr('qv.toggle') + (qvDrawer.classList.contains('hidden') ? ' ▸' : ' ▾');
+  const devPanel = document.getElementById('devPanel');
+  const devToggle = document.getElementById('devToggle');
+  devToggle.textContent = tr('dev.toggle') + (devPanel.classList.contains('hidden') ? ' ▸' : ' ▾');
+  // Lista/Ciclo/Nuevas Temporadas/dev panel tienen contenido armado por JS
+  // (no HTML estatico) que incluye texto traducible -- si la vista esta
+  // activa ahora mismo, se re-renderiza para que tambien cambie de idioma
+  // sin esperar a que el usuario navegue afuera y vuelva.
+  if (state.view === 'anime') renderAnimeLanding();
+  if (state.view === 'lista') renderListaCompleta();
+  if (state.view === 'nt') renderNuevasTemp();
+  if (state.view === 'ciclo') { renderDevPanel(); renderPendingPills(); renderMiniHist(); }
+}
+document.getElementById('langPillRow').addEventListener('click', (e) => {
+  const btn = e.target.closest('.fp-pill[data-lang]');
+  if (!btn) return;
+  state.lang = btn.dataset.lang;
+  document.querySelectorAll('#langPillRow .fp-pill').forEach(p => p.classList.toggle('active', p === btn));
+  applyI18n();
+  // No hay saveState() aca a proposito -- state.lang no persiste entre
+  // recargas, mismo criterio que theme/devMode (ver comentario junto a
+  // I18N en logic.js).
+});
 
 // ============ ARRANQUE DE LA APP ============
 // Esto es lo primero que corre (ver el final del archivo). Carga el
@@ -52,6 +101,7 @@ async function loadState() {
     saveState(); // persiste ya podado (pendingConfirms sin las entradas vencidas)
   } catch (e) { console.error(e); }
   applyTheme(state.theme);
+  applyI18n();
   document.getElementById('view-loading').classList.add('hidden');
   history.replaceState({ view: 'home' }, '', '#home');
   showView('home', false);
@@ -224,17 +274,17 @@ window.addEventListener('popstate', (e) => {
   showView(v, false);
 });
 document.getElementById('goAnime').addEventListener('click', () => showView('anime'));
-document.getElementById('goLive').addEventListener('click', () => toast('Próximamente'));
-document.getElementById('goMovies').addEventListener('click', () => toast('Próximamente'));
+document.getElementById('goLive').addEventListener('click', () => toast(tr('toast.proximamente')));
+document.getElementById('goMovies').addEventListener('click', () => toast(tr('toast.proximamente')));
 // CARTOON (Cartoon Mañana): boton deshabilitado por ahora -- la data va a
 // venir de una tabla/CSV separada de catalogo.csv, todavia no existe.
-document.getElementById('goCartoon').addEventListener('click', () => toast('Próximamente'));
+document.getElementById('goCartoon').addEventListener('click', () => toast(tr('toast.proximamente')));
 document.getElementById('backHomeFromAnime').addEventListener('click', () => showView('home'));
 document.getElementById('backAnimeFromNT').addEventListener('click', () => showView('anime'));
 document.getElementById('backAnimeFromCiclo').addEventListener('click', () => showView('anime'));
 document.getElementById('animeGoCicloBtn').addEventListener('click', () => {
   state.pendingPick = null;
-  document.getElementById('cardArea').innerHTML = '<div class="card-empty">Presiona "Elegir siguiente" para empezar</div>';
+  document.getElementById('cardArea').innerHTML = `<div class="card-empty">${tr('card.empiezaBtn')}</div>`;
   showView('ciclo');
 });
 document.getElementById('animeGoNTBtn').addEventListener('click', () => showView('nt'));
@@ -250,6 +300,7 @@ document.getElementById('backAnimeFromLista').addEventListener('click', () => sh
 document.getElementById('openConfig').addEventListener('click', () => {
   document.getElementById('devModeToggle').checked = !!state.devMode;
   document.getElementById('themeToggle').checked = state.theme === 'dark-purple';
+  document.querySelectorAll('#langPillRow .fp-pill').forEach(p => p.classList.toggle('active', p.dataset.lang === state.lang));
   document.getElementById('configModal').classList.remove('hidden');
 });
 document.getElementById('closeConfig').addEventListener('click', () => {
@@ -290,25 +341,22 @@ function renderAnimeLanding() {
   renderHistoryTable();
   document.getElementById('undoLink').classList.toggle('hidden', !state.lastAction);
 }
-// Quita el prefijo "Era " de ERA_LABELS solo para esta tabla -- la columna
-// ya se llama "Era", repetirlo en cada fila es redundante (ej. "Dorada" en
-// vez de "Era Dorada"). El resto de la app (tag de revelado, panel dev)
-// sigue usando ERA_LABELS completo tal cual, sin tocar.
-function eraShortLabel(era) {
-  return (ERA_LABELS[era] || era).replace(/^Era\s+/i, '');
-}
+// Reemplaza al viejo eraShortLabel() (que le sacaba el prefijo "Era " a
+// ERA_LABELS con un regex) -- ahora usa directamente las claves cortas
+// 'era.<Era>.short' de I18N, sin depender de que el idioma tenga ese mismo
+// prefijo (en ingles/serbio no lo tiene). Ver trEraShort() en logic.js.
 function renderHistoryTable() {
   const body = document.getElementById('histBody');
   if (state.history.length === 0) {
-    body.innerHTML = `<tr><td colspan="5" style="color:var(--dim); text-align:center; padding:18px 6px;">Nada elegido aún</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--dim); text-align:center; padding:18px 6px;">${tr('hist.vacio')}</td></tr>`;
     return;
   }
   body.innerHTML = state.history.map((h, i) => `
     <tr class="${i === 0 ? 'latest' : ''}">
       <td class="col-img"><div class="hist-thumb">🎬</div></td>
       <td class="name-cell">${esc(h.title)}</td>
-      <td><span class="era-cell"><span class="dot ${h.era}"></span>${esc(eraShortLabel(h.era))}</span></td>
-      <td>${esc(h.band || '')}</td>
+      <td><span class="era-cell"><span class="dot ${h.era}"></span>${esc(trEraShort(h.era))}</span></td>
+      <td>${esc(trBand(h.band || ''))}</td>
       <td class="col-emo">${h.emotional ? '<span style="color:var(--emo);">♥</span>' : ''}</td>
     </tr>
   `).join('');
@@ -316,7 +364,7 @@ function renderHistoryTable() {
 function renderMiniHist() {
   const el = document.getElementById('miniHist');
   if (!el) return;
-  if (state.history.length === 0) { el.innerHTML = '<div style="color:var(--dim); font-size:12.5px;">Nada elegido aún</div>'; return; }
+  if (state.history.length === 0) { el.innerHTML = `<div style="color:var(--dim); font-size:12.5px;">${tr('hist.vacio')}</div>`; return; }
   el.innerHTML = state.history.slice(0, 10).map((h, i) => `
     <div class="mini-hist-item ${i === 0 ? 'latest' : ''}">
       <span class="mini-hist-dot ${h.era}"></span>
@@ -361,7 +409,7 @@ function renderListaCompleta() {
   if (state.listaShowUnavail === false) items = items.filter(a => a.available);
   items = items.slice().sort((a, b) => a.title.localeCompare(b.title));
   if (items.length === 0) {
-    grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:var(--dim);">Sin títulos pendientes.</div>';
+    grid.innerHTML = `<div style="grid-column:1/-1; padding:20px; text-align:center; color:var(--dim);">${tr('lista.sinTitulos')}</div>`;
     return;
   }
   grid.innerHTML = items.map((a, idx) => {
@@ -433,19 +481,19 @@ function onListaCardTap(item) {
   if (!item.available) {
     const note = unavailableNote(item.plataforma);
     showInfoModal({
-      title: 'No disponible',
-      message: 'No disponible en plataformas. Lo siento.' + (note ? ` (${note})` : ''),
-      buttons: [{ label: 'Entendido' }]
+      title: tr('modal.noDisponible.title'),
+      message: tr('modal.noDisponible.msg') + (note ? ` (${note})` : ''),
+      buttons: [{ label: tr('btn.entendido') }]
     });
     return;
   }
   if (item.pending) {
     showInfoModal({
-      title: 'Nueva temporada',
-      message: 'Está estrenando o falta estrenar una nueva temporada. ¿Quieres arrancar aun así?',
+      title: tr('modal.nuevaTemp.title'),
+      message: tr('modal.nuevaTemp.msg'),
       buttons: [
-        { label: 'Sí, arrancar', action: () => confirmPlatformThen(item) },
-        { label: 'Cancelar' }
+        { label: tr('btn.siArrancar'), action: () => confirmPlatformThen(item) },
+        { label: tr('btn.cancelar') }
       ]
     });
     return;
@@ -459,10 +507,10 @@ function onListaCardTap(item) {
 function confirmPlatformThen(item) {
   showInfoModal({
     title: item.title,
-    message: item.plataforma ? 'Disponible en: ' + platformPlainNames(item.plataforma) : 'Sin plataforma registrada.',
+    message: item.plataforma ? tr('modal.disponibleEn') + platformPlainNames(item.plataforma) : tr('modal.sinPlataforma'),
     buttons: [
-      { label: 'OK, elegir esta', action: () => commitFromLista(item) },
-      { label: 'Cancelar' }
+      { label: tr('btn.okElegirEsta'), action: () => commitFromLista(item) },
+      { label: tr('btn.cancelar') }
     ]
   });
 }
@@ -546,7 +594,7 @@ function renderNuevasTemp() {
   const grid = document.getElementById('ntGrid');
   const avail = ntAvailableList();
   if (avail.length === 0) {
-    grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:var(--dim); padding:20px;">No hay temporadas nuevas listas por ahora.</div>`;
+    grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:var(--dim); padding:20px;">${tr('nt.sinNuevas')}</div>`;
     return;
   }
   grid.innerHTML = avail.map(nt => {
@@ -558,7 +606,7 @@ function renderNuevasTemp() {
       <div class="nt-poster">${posterHtml}</div>
       <div class="nt-card-body">
         <div class="nt-card-title">${esc(nt.title)}</div>
-        <div class="nt-card-meta">${esc(nt.eps)} eps</div>
+        <div class="nt-card-meta">${esc(nt.eps)} ${tr('unidad.eps')}</div>
       </div>
     </button>`;
   }).join('');
@@ -662,7 +710,7 @@ function renderGenresThemes(container, t) {
     ...(t.generos ? t.generos.split(',') : []),
     ...(t.temas ? t.temas.split(',') : [])
   ].map(s => s.trim()).filter(Boolean);
-  const epsHtml = `<span class="card-eps-plain">${t.eps} eps</span>`;
+  const epsHtml = `<span class="card-eps-plain">${t.eps} ${tr('unidad.eps')}</span>`;
   const sepHtml = `<span class="card-eps-sep">·</span>`;
   container.innerHTML = all.length > 0
     ? `${epsHtml} ${sepHtml} <span class="card-genres-plain">${all.map(g => esc(g)).join(' · ')}</span>`
@@ -694,11 +742,11 @@ async function revealPickNormal(pick) {
     : '🎬';
   posterFrame.classList.add('fade-in');
   await wait(150);
-  addTag(tags, ERA_LABELS[t.era] || t.era, 'era-' + t.era);
+  addTag(tags, trEraFull(t.era), 'era-' + t.era);
   await wait(500);
-  addTag(tags, t.band, 'band-' + t.band);
+  addTag(tags, trBand(t.band), 'band-' + t.band);
   await wait(500);
-  if (t.emotional) { addTag(tags, 'Emotional', 'emo'); await wait(300); }
+  if (t.emotional) { addTag(tags, tr('tag.emotional'), 'emo'); await wait(300); }
   titleEl.textContent = t.title;
   titleEl.classList.add('fade-in');
   if (t.nota) {
@@ -712,13 +760,13 @@ async function revealPickNormal(pick) {
   platEl.classList.add('fade-in');
   if (t.sinopsis) {
     sinopsisWrap.innerHTML = `<div class="card-sinopsis clamped" id="rvSinopsisText">${esc(t.sinopsis)}</div>
-      <span class="card-sinopsis-toggle" id="rvSinopsisToggle" role="button" tabindex="0">Ver más</span>`;
+      <span class="card-sinopsis-toggle" id="rvSinopsisToggle" role="button" tabindex="0">${tr('sinopsis.verMas')}</span>`;
     sinopsisWrap.classList.add('fade-in');
     document.getElementById('rvSinopsisToggle').addEventListener('click', () => {
       const el = document.getElementById('rvSinopsisText');
       const btn = document.getElementById('rvSinopsisToggle');
       const stillClamped = el.classList.toggle('clamped');
-      btn.textContent = stillClamped ? 'Ver más' : 'Ver menos';
+      btn.textContent = stillClamped ? tr('sinopsis.verMas') : tr('sinopsis.verMenos');
     });
   }
 }
@@ -730,17 +778,17 @@ async function revealPickExtra(item, cat) {
   const tags = document.getElementById('rvTags');
   const titleEl = document.getElementById('rvTitle');
   const platEl = document.getElementById('rvPlat');
-  const label = cat === 'adulto' ? 'Adulto' : cat === 'larga' ? 'Larga' : 'Repetición';
+  const label = cat === 'adulto' ? tr('cat.adulto') : cat === 'larga' ? tr('cat.larga') : tr('cat.repeticion');
   posterFrame.style.background = 'linear-gradient(135deg, var(--accent), var(--accent))';
   posterEl.innerHTML = '🎬';
   posterFrame.classList.add('fade-in');
   await wait(150);
   addTag(tags, label, 'era-Extra');
   await wait(500);
-  if (item.emotional) { addTag(tags, 'Emotional', 'emo'); await wait(300); }
+  if (item.emotional) { addTag(tags, tr('tag.emotional'), 'emo'); await wait(300); }
   titleEl.textContent = item.title;
   titleEl.classList.add('fade-in');
-  platEl.innerHTML = platformChipsHtml(item.plataforma) + `<span class="plat-eps">${item.eps} eps</span>`;
+  platEl.innerHTML = platformChipsHtml(item.plataforma) + `<span class="plat-eps">${item.eps} ${tr('unidad.eps')}</span>`;
   platEl.classList.add('fade-in');
 }
 
@@ -757,20 +805,22 @@ function resetStateToInitial() {
   const keepDevMode = state.devMode;
   const keepTheme = state.theme;
   const keepListaCols = state.listaCols;
+  const keepLang = state.lang;
   state = seedInitialState();
   state.devMode = keepDevMode;
   state.theme = keepTheme;
   state.listaCols = keepListaCols;
+  state.lang = keepLang;
   saveState();
   render();
 }
 document.getElementById('resetStateBtn').addEventListener('click', () => {
   showInfoModal({
-    title: 'Reiniciar estado',
-    message: 'Vuelve el mazo, historial y contadores al estado inicial de prueba (hasta Kakegurui). No borra ni cambia nada en el Google Sheet. ¿Confirmas?',
+    title: tr('modal.reiniciar.title'),
+    message: tr('modal.reiniciar.msg'),
     buttons: [
-      { label: 'Sí, reiniciar', action: () => { resetStateToInitial(); toast('Estado reiniciado'); } },
-      { label: 'Cancelar' }
+      { label: tr('btn.siReiniciar'), action: () => { resetStateToInitial(); toast(tr('toast.estadoReiniciado')); } },
+      { label: tr('btn.cancelar') }
     ]
   });
 });
@@ -815,11 +865,11 @@ async function startDrawNormal() {
     // el catalogo disponible, no solo en las 24 fichas del mazo actual) --
     // si igual llego vacio aca, es un "sin resultados" real, no solo que el
     // mazo puntual no tenga esa combinacion.
-    toast(hayFiltro ? '😕 Sin resultados para esos filtros' : 'Sin candidatos, revisa el mazo');
+    toast(hayFiltro ? tr('toast.sinResultadosFiltro') : tr('toast.sinCandidatos'));
     // Limpiar la tarjeta: si quedaba un pick anterior visible (ej. veniamos
     // de "Buscar de nuevo" con un filtro recien activado), no debe quedar
     // pegado en pantalla dando a entender que sigue siendo el resultado.
-    document.getElementById('cardArea').innerHTML = '<div class="card-empty">Sin resultados para esos filtros</div>';
+    document.getElementById('cardArea').innerHTML = `<div class="card-empty">${tr('card.sinResultadosFiltroPlano')}</div>`;
     document.getElementById('confirmRow').classList.add('hidden');
     document.getElementById('normalRow').classList.remove('hidden');
     disableAllActionButtons(false);
@@ -898,7 +948,7 @@ async function startDrawExtra(cat, fromGate) {
   if (!ok) return; // se cancelo (se navego afuera de Ciclo mientras giraba)
 
   const item = drawExtra(cat);
-  if (!item) { toast('Sin títulos en esta categoría'); state.extra = null; render(); disableAllActionButtons(false); return; }
+  if (!item) { toast(tr('toast.sinTitulosCategoria')); state.extra = null; render(); disableAllActionButtons(false); return; }
   await revealPickExtra(item, cat);
   if (myGen !== drawGen) return; // se cancelo mientras se revelaba
   state.extra.item = item;
@@ -936,17 +986,17 @@ function renderPendingPills() {
   row.innerHTML = '';
   if (state.blocking || state.pendingPick || state.extra) { row.classList.add('hidden'); return; }
   if (state.owed.adulto) {
-    const b = document.createElement('button'); b.className = 'pill'; b.textContent = '¿Ahora sí Adulta?';
+    const b = document.createElement('button'); b.className = 'pill'; b.textContent = tr('pill.adulto');
     b.addEventListener('click', () => startDrawExtra('adulto', false));
     row.appendChild(b);
   }
   if (state.owed.larga) {
-    const b = document.createElement('button'); b.className = 'pill'; b.textContent = '¿Ahora sí Larga?';
+    const b = document.createElement('button'); b.className = 'pill'; b.textContent = tr('pill.larga');
     b.addEventListener('click', () => startDrawExtra('larga', false));
     row.appendChild(b);
   }
   if (state.owed.repeticion) {
-    const b = document.createElement('button'); b.className = 'pill'; b.textContent = '¿Ahora sí Repetir?';
+    const b = document.createElement('button'); b.className = 'pill'; b.textContent = tr('pill.repetir');
     b.addEventListener('click', () => startDrawExtra('repeticion', false));
     row.appendChild(b);
   }
@@ -975,16 +1025,16 @@ document.getElementById('devToggle').addEventListener('click', () => {
   const panel = document.getElementById('devPanel');
   const isHidden = panel.classList.contains('hidden');
   panel.classList.toggle('hidden');
-  document.getElementById('devToggle').textContent = isHidden ? 'DEV MODE ▾' : 'DEV MODE ▸';
+  document.getElementById('devToggle').textContent = tr('dev.toggle') + (isHidden ? ' ▾' : ' ▸');
   document.getElementById('qvDrawer').classList.add('hidden');
-  document.getElementById('qvToggle').textContent = 'QUIERO VER ▸';
+  document.getElementById('qvToggle').textContent = tr('qv.toggle') + ' ▸';
 });
 document.addEventListener('click', (e) => {
   const panel = document.getElementById('devPanel');
   const toggleBtn = document.getElementById('devToggle');
   if (!panel.classList.contains('hidden') && !panel.contains(e.target) && e.target !== toggleBtn) {
     panel.classList.add('hidden');
-    toggleBtn.textContent = 'DEV MODE ▸';
+    toggleBtn.textContent = tr('dev.toggle') + ' ▸';
   }
 });
 
@@ -1001,41 +1051,41 @@ function renderDevPanel() {
     return tokens.map(t => `<div class="dev-sq${t.used ? ' off' : ''}" style="background:var(${colorVar})"></div>`).join('');
   }
 
-  let html = `<div class="dev-panel-title" style="margin-bottom:8px;">Por Era (mazo de ${state.deck.length})</div>`;
+  let html = `<div class="dev-panel-title" style="margin-bottom:8px;">${tr('dev.porEra', { n: state.deck.length })}</div>`;
   const { eraCounts } = computeCatalogStats();
   const disponiblesPorEra = era => MAIN_POOL.filter(a => a.era === era).length;
   html += ERA_ORDER.map(era => {
     const tokens = state.deck.filter(t => t.era === era);
-    return `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS[era] || era}</div>
+    return `<div class="dev-era-row"><div class="dev-era-label">${trEraFull(era)}</div>
       <div class="dev-sq-group">${sqHtml(tokens, '--' + era.toLowerCase())}</div>
-      <div class="dev-era-count">${disponiblesPorEra(era)}/${eraCounts[era] || 0} disp.</div></div>`;
+      <div class="dev-era-count">${disponiblesPorEra(era)}/${eraCounts[era] || 0} ${tr('dev.disp')}</div></div>`;
   }).join('');
 
-  html += '<div class="dev-panel-title" style="margin:16px 0 8px;">Por Tipo (Excelente / Buena / Normal)</div>';
+  html += `<div class="dev-panel-title" style="margin:16px 0 8px;">${tr('dev.porTipo')}</div>`;
   html += ['Dorada', 'Moderna'].map(era => {
     const groups = BAND_ORDER.map(band => {
       const colorVar = band === 'Excelente' ? '--band-excelente' : band === 'Buena' ? '--band-buena' : '--band-normal';
       return sqHtml(tokensFor(era, band), colorVar);
     }).join('<span style="width:6px;display:inline-block;"></span>');
-    return `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS[era] || era}</div>
+    return `<div class="dev-era-row"><div class="dev-era-label">${trEraFull(era)}</div>
       <div class="dev-sq-group">${groups}</div></div>`;
   }).join('');
   // Clasica dentro del mazo actual: sin sub-reparto fijo -- cuadritos neutros.
-  html += `<div class="dev-era-row"><div class="dev-era-label">${ERA_LABELS['Clasica']}</div>
+  html += `<div class="dev-era-row"><div class="dev-era-label">${trEraFull('Clasica')}</div>
     <div class="dev-sq-group">${sqHtml(tokensFor('Clasica', null), '--dim')}</div></div>`;
 
   html += `<div class="dev-band-legend">
-    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-excelente)"></span>Excelente</div>
-    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-buena)"></span>Buena</div>
-    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-normal)"></span>Normal</div>
+    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-excelente)"></span>${trBand('Excelente')}</div>
+    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-buena)"></span>${trBand('Buena')}</div>
+    <div class="dev-legend-item"><span class="dev-legend-dot" style="background:var(--band-normal)"></span>${trBand('Normal')}</div>
   </div>`;
 
   // Bolsa caliente de Clasica: independiente del mazo, dura muchos mazos.
   const bag = state.clasicaBag || [];
   const bagLeft = band => bag.filter(t => t.band === band && !t.used).length;
   const bagTotal = band => bag.filter(t => t.band === band).length;
-  html += `<div class="dev-panel-title" style="margin:16px 0 8px;">Bolsa caliente Clásica (independiente del mazo)</div>
-    <div class="dev-era-row"><div class="dev-era-label" style="width:auto;">Excelente ${bagLeft('Excelente')}/${bagTotal('Excelente')} · Buena ${bagLeft('Buena')}/${bagTotal('Buena')} · Normal ${bagLeft('Normal')}/${bagTotal('Normal')}</div></div>`;
+  html += `<div class="dev-panel-title" style="margin:16px 0 8px;">${tr('dev.bolsaClasica')}</div>
+    <div class="dev-era-row"><div class="dev-era-label" style="width:auto;">${trBand('Excelente')} ${bagLeft('Excelente')}/${bagTotal('Excelente')} · ${trBand('Buena')} ${bagLeft('Buena')}/${bagTotal('Buena')} · ${trBand('Normal')} ${bagLeft('Normal')}/${bagTotal('Normal')}</div></div>`;
 
   block.innerHTML = html;
 }
@@ -1085,16 +1135,16 @@ document.getElementById('qvToggle').addEventListener('click', () => {
   const drawer = document.getElementById('qvDrawer');
   const isHidden = drawer.classList.contains('hidden');
   drawer.classList.toggle('hidden');
-  document.getElementById('qvToggle').textContent = isHidden ? 'QUIERO VER ▾' : 'QUIERO VER ▸';
+  document.getElementById('qvToggle').textContent = tr('qv.toggle') + (isHidden ? ' ▾' : ' ▸');
   document.getElementById('devPanel').classList.add('hidden');
-  document.getElementById('devToggle').textContent = 'DEV MODE ▸';
+  document.getElementById('devToggle').textContent = tr('dev.toggle') + ' ▸';
 });
 document.addEventListener('click', (e) => {
   const drawer = document.getElementById('qvDrawer');
   const toggleBtn = document.getElementById('qvToggle');
   if (!drawer.classList.contains('hidden') && !drawer.contains(e.target) && e.target !== toggleBtn) {
     drawer.classList.add('hidden');
-    toggleBtn.textContent = 'QUIERO VER ▸';
+    toggleBtn.textContent = tr('qv.toggle') + ' ▸';
   }
 });
 
@@ -1132,14 +1182,14 @@ function renderGateOrNormal() {
     document.getElementById('gateAdultoBtn').classList.toggle('hidden', !state.owed.adulto);
     document.getElementById('gateLargaBtn').classList.toggle('hidden', !state.owed.larga);
     document.getElementById('gateRepBtn').classList.toggle('hidden', !state.owed.repeticion);
-    document.getElementById('cardArea').innerHTML = '<div class="card-empty">Ciclo completo</div>';
+    document.getElementById('cardArea').innerHTML = `<div class="card-empty">${tr('card.cicloCompleto')}</div>`;
     return;
   }
   gateBox.classList.add('hidden'); confirmRow.classList.add('hidden');
   continueExtraRow.classList.add('hidden');
   normalRow.classList.remove('hidden');
   if (!document.getElementById('rvTitle')) {
-    document.getElementById('cardArea').innerHTML = '<div class="card-empty">Presiona "Elegir siguiente" para empezar</div>';
+    document.getElementById('cardArea').innerHTML = `<div class="card-empty">${tr('card.empiezaBtn')}</div>`;
   }
 }
 
