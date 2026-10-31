@@ -8,10 +8,423 @@
 
 const BAND_ORDER = ['Excelente', 'Buena', 'Normal'];
 const ERA_ORDER = ['Dorada', 'Moderna', 'Clasica'];
+// ERA_LABELS queda como estaba (no se borra, podria estar referenciado desde
+// otro lado que no vimos) pero ya NO es la fuente de texto mostrado -- eso
+// ahora es I18N ('era.<Era>.full'/'era.<Era>.short', via trEraFull/trEraShort
+// mas abajo). Se deja sin tocar a proposito.
 const ERA_LABELS = { Dorada: 'Era Dorada', Moderna: 'Era Moderna', Clasica: 'Era Clásica' };
 const REP_EVERY = 3;
 const THEMES = ['dark-purple', 'light'];
 const THEME_SWATCH = { 'dark-purple': '#b98ee8', 'light': '#5b4fd1' };
+
+// ============ IDIOMAS (ES/EN/SR) ============
+// Diccionario plano, una entrada por string visible de la UI (chrome de la
+// app: botones, titulos, modales, toasts). NO traduce contenido del propio
+// catalogo (nombres de anime, sinopsis, generos del Sheet, notas) -- eso
+// sigue viniendo tal cual del CSV, en el idioma en que Diego lo cargo.
+// Tampoco traduce nombres de plataforma (Netflix/Crunchyroll/Prime/Disney/
+// Max) -- son nombres propios de marca.
+// state.lang NO se persiste entre recargas (misma logica que state.theme y
+// state.devMode hoy: saveState() solo cachea usedTitles/pendingConfirms/
+// largaUsed/adultoUsed/repUsed -- ver comentario en saveState()). Volver a
+// abrir la app vuelve siempre a 'es'. No se agrego persistencia porque no
+// se pidio y hubiera sido una desviacion del patron ya establecido.
+const LANGS = ['es', 'en', 'sr'];
+const LANG_NAMES = { es: 'Español', en: 'English', sr: 'Srpski' };
+const I18N = {
+  es: {
+    'home.subtitle': 'Elige qué quieres ver hoy',
+    'home.anime': 'ANIME',
+    'home.live': 'LIVE ACTION',
+    'home.movies': 'PELÍCULAS',
+    'home.cartoon': 'CARTOON',
+    'toast.proximamente': 'Próximamente',
+
+    'config.title': 'Configuración',
+    'config.ariaLabel': 'Configuración',
+    'config.darkMode': 'Modo Oscuro',
+    'config.devMode': 'Modo Desarrollador',
+    'config.language': 'Idioma',
+    'config.close': 'Cerrar',
+
+    'nav.backHome': '‹ INICIO',
+    'nav.backAnime': '‹ ANIME',
+    'header.anime': 'ANIME',
+    'tri.ruleta': 'Ruleta<br>de Anime',
+    'tri.nuevasTemp': 'Nuevas<br>Temporadas',
+    'tri.lista': 'Ver Lista<br>Completa',
+    'section.historial': 'Historial',
+    'undo.deshacer': '↩ Deshacer',
+    'hist.nombre': 'Nombre',
+    'hist.era': 'Era',
+    'hist.tipo': 'Tipo',
+    'hist.vacio': 'Nada elegido aún',
+
+    'lista.title': 'Lista Completa',
+    'lista.hint': 'Toca cualquier título para elegirlo como siguiente ahora mismo.',
+    'lista.ariaFiltros': 'Filtros',
+    'lista.columnas': 'Columnas',
+    'lista.mostrarNoDisp': 'Mostrar no disponibles',
+    'lista.sinTitulos': 'Sin títulos pendientes.',
+    'lista.volverArriba': 'Volver arriba',
+
+    'nt.title': 'Nuevas Temporadas',
+    'nt.hint': 'Ya Disponibles',
+    'nt.sinNuevas': 'No hay temporadas nuevas listas por ahora.',
+
+    'ciclo.title': 'Ruleta de Anime',
+    'qv.toggle': 'QUIERO VER',
+    'dev.toggle': 'DEV MODE',
+    'filter.eraLabel': 'Era',
+    'filter.era.Dorada': 'Dorada',
+    'filter.era.Moderna': 'Nuevo',
+    'filter.era.Clasica': 'Clásico',
+    'filter.calidadLabel': 'Calidad',
+    'filter.generoLabel': 'Género',
+    'filter.generoStub': '(no funcional aún)',
+    'band.Excelente': 'Excelente',
+    'band.Buena': 'Buena',
+    'band.Normal': 'Normal',
+    'genero.Accion': 'Acción',
+    'genero.Comedia': 'Comedia',
+    'genero.Drama': 'Drama',
+    'genero.Romance': 'Romance',
+    'genero.Suspenso': 'Suspenso',
+
+    'dev.cupos': 'Cupos del ciclo',
+    'dev.statCiclo': 'Ciclo',
+    'dev.statEmo': 'Emotional',
+    'dev.statNCiclo': 'N° ciclo',
+    'dev.porEra': 'Por Era (mazo de {n})',
+    'dev.disp': 'disp.',
+    'dev.porTipo': 'Por Tipo (Excelente / Buena / Normal)',
+    'dev.bolsaClasica': 'Bolsa caliente Clásica (independiente del mazo)',
+    'dev.reiniciar': '↺ Reiniciar estado (prueba)',
+
+    'card.empiezaBtn': 'Presiona "Elegir siguiente" para empezar',
+    'card.cicloCompleto': 'Ciclo completo',
+    'gate.msg': '✅ Ok suficiente anime, ¿ahora una larga en serio o un cartoon adulto?',
+    'gate.adulto': '🎬 Siguiente Adulta',
+    'gate.larga': '📽️ Siguiente Larga',
+    'gate.repetir': '🔁 Repetir Grande',
+    'gate.continuar': '➡️ Mejor continuar ciclo',
+    'btn.elegir': '🎲 Elegir siguiente',
+    'btn.buscarDeNuevo': '🔄 Buscar de nuevo',
+    'btn.confirmar': '✅ Confirmar serie',
+    'deck.historial10': 'Historial, últimos 10',
+
+    'pill.adulto': '¿Ahora sí Adulta?',
+    'pill.larga': '¿Ahora sí Larga?',
+    'pill.repetir': '¿Ahora sí Repetir?',
+
+    'toast.sinResultadosFiltro': '😕 Sin resultados para esos filtros',
+    'card.sinResultadosFiltroPlano': 'Sin resultados para esos filtros',
+    'toast.sinCandidatos': 'Sin candidatos, revisa el mazo',
+    'toast.sinTitulosCategoria': 'Sin títulos en esta categoría',
+    'toast.estadoReiniciado': 'Estado reiniciado',
+
+    'modal.noDisponible.title': 'No disponible',
+    'modal.noDisponible.msg': 'No disponible en plataformas. Lo siento.',
+    'btn.entendido': 'Entendido',
+
+    'modal.nuevaTemp.title': 'Nueva temporada',
+    'modal.nuevaTemp.msg': 'Está estrenando o falta estrenar una nueva temporada. ¿Quieres arrancar aun así?',
+    'btn.siArrancar': 'Sí, arrancar',
+    'btn.cancelar': 'Cancelar',
+
+    'modal.disponibleEn': 'Disponible en: ',
+    'modal.sinPlataforma': 'Sin plataforma registrada.',
+    'btn.okElegirEsta': 'OK, elegir esta',
+
+    'modal.reiniciar.title': 'Reiniciar estado',
+    'modal.reiniciar.msg': 'Vuelve el mazo, historial y contadores al estado inicial de prueba (hasta Kakegurui). No borra ni cambia nada en el Google Sheet. ¿Confirmas?',
+    'btn.siReiniciar': 'Sí, reiniciar',
+
+    'platform.sinDato': 'Sin dato',
+    'unidad.eps': 'eps',
+    'sinopsis.verMas': 'Ver más',
+    'sinopsis.verMenos': 'Ver menos',
+
+    'cat.adulto': 'Adulto',
+    'cat.larga': 'Larga',
+    'cat.repeticion': 'Repetición',
+    'cat.nuevaTemporada': 'Nueva Temporada',
+    'tag.emotional': 'Emotional',
+
+    'era.Dorada.full': 'Era Dorada', 'era.Dorada.short': 'Dorada',
+    'era.Moderna.full': 'Era Moderna', 'era.Moderna.short': 'Moderna',
+    'era.Clasica.full': 'Era Clásica', 'era.Clasica.short': 'Clásica',
+    'era.Extra.short': 'Extra'
+  },
+  en: {
+    'home.subtitle': 'Choose what to watch today',
+    'home.anime': 'ANIME',
+    'home.live': 'LIVE ACTION',
+    'home.movies': 'MOVIES',
+    'home.cartoon': 'CARTOON',
+    'toast.proximamente': 'Coming soon',
+
+    'config.title': 'Settings',
+    'config.ariaLabel': 'Settings',
+    'config.darkMode': 'Dark Mode',
+    'config.devMode': 'Developer Mode',
+    'config.language': 'Language',
+    'config.close': 'Close',
+
+    'nav.backHome': '‹ HOME',
+    'nav.backAnime': '‹ ANIME',
+    'header.anime': 'ANIME',
+    'tri.ruleta': 'Anime<br>Roulette',
+    'tri.nuevasTemp': 'New<br>Seasons',
+    'tri.lista': 'View Full<br>List',
+    'section.historial': 'History',
+    'undo.deshacer': '↩ Undo',
+    'hist.nombre': 'Name',
+    'hist.era': 'Era',
+    'hist.tipo': 'Type',
+    'hist.vacio': 'Nothing chosen yet',
+
+    'lista.title': 'Full List',
+    'lista.hint': 'Tap any title to pick it as next, right now.',
+    'lista.ariaFiltros': 'Filters',
+    'lista.columnas': 'Columns',
+    'lista.mostrarNoDisp': 'Show unavailable',
+    'lista.sinTitulos': 'No titles pending.',
+    'lista.volverArriba': 'Back to top',
+
+    'nt.title': 'New Seasons',
+    'nt.hint': 'Already Available',
+    'nt.sinNuevas': 'No new seasons ready yet.',
+
+    'ciclo.title': 'Anime Roulette',
+    'qv.toggle': 'I WANT TO WATCH',
+    'dev.toggle': 'DEV MODE',
+    'filter.eraLabel': 'Era',
+    'filter.era.Dorada': 'Golden',
+    'filter.era.Moderna': 'New',
+    'filter.era.Clasica': 'Classic',
+    'filter.calidadLabel': 'Quality',
+    'filter.generoLabel': 'Genre',
+    'filter.generoStub': '(not functional yet)',
+    'band.Excelente': 'Excellent',
+    'band.Buena': 'Good',
+    'band.Normal': 'Normal',
+    'genero.Accion': 'Action',
+    'genero.Comedia': 'Comedy',
+    'genero.Drama': 'Drama',
+    'genero.Romance': 'Romance',
+    'genero.Suspenso': 'Suspense',
+
+    'dev.cupos': 'Cycle slots',
+    'dev.statCiclo': 'Cycle',
+    'dev.statEmo': 'Emotional',
+    'dev.statNCiclo': 'Cycle #',
+    'dev.porEra': 'By Era (deck of {n})',
+    'dev.disp': 'avail.',
+    'dev.porTipo': 'By Type (Excellent / Good / Normal)',
+    'dev.bolsaClasica': 'Classic hot bag (independent from the deck)',
+    'dev.reiniciar': '↺ Reset state (test)',
+
+    'card.empiezaBtn': 'Press "Pick next" to start',
+    'card.cicloCompleto': 'Cycle complete',
+    'gate.msg': "✅ Ok that's enough anime, now a real Long one or an Adult cartoon?",
+    'gate.adulto': '🎬 Next Adult',
+    'gate.larga': '📽️ Next Long',
+    'gate.repetir': '🔁 Big Rewatch',
+    'gate.continuar': '➡️ Better continue cycle',
+    'btn.elegir': '🎲 Pick next',
+    'btn.buscarDeNuevo': '🔄 Search again',
+    'btn.confirmar': '✅ Confirm series',
+    'deck.historial10': 'History, last 10',
+
+    'pill.adulto': 'Ready for Adult now?',
+    'pill.larga': 'Ready for Long now?',
+    'pill.repetir': 'Ready to Rewatch now?',
+
+    'toast.sinResultadosFiltro': '😕 No results for those filters',
+    'card.sinResultadosFiltroPlano': 'No results for those filters',
+    'toast.sinCandidatos': 'No candidates, check the deck',
+    'toast.sinTitulosCategoria': 'No titles in this category',
+    'toast.estadoReiniciado': 'State reset',
+
+    'modal.noDisponible.title': 'Not available',
+    'modal.noDisponible.msg': 'Not available on any platform. Sorry.',
+    'btn.entendido': 'Got it',
+
+    'modal.nuevaTemp.title': 'New season',
+    'modal.nuevaTemp.msg': 'A new season is airing or about to air. Do you want to start it anyway?',
+    'btn.siArrancar': 'Yes, start',
+    'btn.cancelar': 'Cancel',
+
+    'modal.disponibleEn': 'Available on: ',
+    'modal.sinPlataforma': 'No platform on record.',
+    'btn.okElegirEsta': 'OK, pick this one',
+
+    'modal.reiniciar.title': 'Reset state',
+    'modal.reiniciar.msg': "Resets the deck, history and counters to the initial test state (up to Kakegurui). Doesn't delete or change anything in the Google Sheet. Confirm?",
+    'btn.siReiniciar': 'Yes, reset',
+
+    'platform.sinDato': 'No data',
+    'unidad.eps': 'eps',
+    'sinopsis.verMas': 'Show more',
+    'sinopsis.verMenos': 'Show less',
+
+    'cat.adulto': 'Adult',
+    'cat.larga': 'Long',
+    'cat.repeticion': 'Rewatch',
+    'cat.nuevaTemporada': 'New Season',
+    'tag.emotional': 'Emotional',
+
+    'era.Dorada.full': 'Golden Era', 'era.Dorada.short': 'Golden',
+    'era.Moderna.full': 'Modern Era', 'era.Moderna.short': 'Modern',
+    'era.Clasica.full': 'Classic Era', 'era.Clasica.short': 'Classic',
+    'era.Extra.short': 'Extra'
+  },
+  sr: {
+    'home.subtitle': 'Izaberi šta želiš da gledaš danas',
+    'home.anime': 'ANIME',
+    'home.live': 'LIVE ACTION',
+    'home.movies': 'FILMOVI',
+    'home.cartoon': 'CARTOON',
+    'toast.proximamente': 'Uskoro',
+
+    'config.title': 'Podešavanja',
+    'config.ariaLabel': 'Podešavanja',
+    'config.darkMode': 'Tamni režim',
+    'config.devMode': 'Režim za programere',
+    'config.language': 'Jezik',
+    'config.close': 'Zatvori',
+
+    'nav.backHome': '‹ POČETNA',
+    'nav.backAnime': '‹ ANIME',
+    'header.anime': 'ANIME',
+    'tri.ruleta': 'Anime<br>rulet',
+    'tri.nuevasTemp': 'Nove<br>sezone',
+    'tri.lista': 'Pogledaj<br>celu listu',
+    'section.historial': 'Istorija',
+    'undo.deshacer': '↩ Poništi',
+    'hist.nombre': 'Ime',
+    'hist.era': 'Era',
+    'hist.tipo': 'Tip',
+    'hist.vacio': 'Još ništa nije izabrano',
+
+    'lista.title': 'Cela lista',
+    'lista.hint': 'Dodirni bilo koji naslov da ga odmah izabereš kao sledeći.',
+    'lista.ariaFiltros': 'Filteri',
+    'lista.columnas': 'Kolone',
+    'lista.mostrarNoDisp': 'Prikaži nedostupne',
+    'lista.sinTitulos': 'Nema naslova na čekanju.',
+    'lista.volverArriba': 'Nazad na vrh',
+
+    'nt.title': 'Nove sezone',
+    'nt.hint': 'Već dostupno',
+    'nt.sinNuevas': 'Trenutno nema novih spremnih sezona.',
+
+    'ciclo.title': 'Anime rulet',
+    'qv.toggle': 'ŽELIM DA GLEDAM',
+    'dev.toggle': 'DEV MODE',
+    'filter.eraLabel': 'Era',
+    'filter.era.Dorada': 'Zlatno',
+    'filter.era.Moderna': 'Novo',
+    'filter.era.Clasica': 'Klasično',
+    'filter.calidadLabel': 'Kvalitet',
+    'filter.generoLabel': 'Žanr',
+    'filter.generoStub': '(još ne funkcioniše)',
+    'band.Excelente': 'Odlično',
+    'band.Buena': 'Dobro',
+    'band.Normal': 'Normalno',
+    'genero.Accion': 'Akcija',
+    'genero.Comedia': 'Komedija',
+    'genero.Drama': 'Drama',
+    'genero.Romance': 'Romansa',
+    'genero.Suspenso': 'Napetost',
+
+    'dev.cupos': 'Mesta u ciklusu',
+    'dev.statCiclo': 'Ciklus',
+    'dev.statEmo': 'Emotivno',
+    'dev.statNCiclo': 'Broj ciklusa',
+    'dev.porEra': 'Po eri (špil od {n})',
+    'dev.disp': 'dost.',
+    'dev.porTipo': 'Po tipu (Odlično / Dobro / Normalno)',
+    'dev.bolsaClasica': 'Klasična vruća kesa (nezavisno od špila)',
+    'dev.reiniciar': '↺ Resetuj stanje (test)',
+
+    'card.empiezaBtn': 'Pritisni "Izaberi sledeće" da počneš',
+    'card.cicloCompleto': 'Ciklus završen',
+    'gate.msg': '✅ Ok, dosta animea, sad ozbiljno Duga serija ili crtać za odrasle?',
+    'gate.adulto': '🎬 Sledeća za odrasle',
+    'gate.larga': '📽️ Sledeća duga',
+    'gate.repetir': '🔁 Veliko ponavljanje',
+    'gate.continuar': '➡️ Bolje nastavi ciklus',
+    'btn.elegir': '🎲 Izaberi sledeće',
+    'btn.buscarDeNuevo': '🔄 Traži ponovo',
+    'btn.confirmar': '✅ Potvrdi seriju',
+    'deck.historial10': 'Istorija, poslednjih 10',
+
+    'pill.adulto': 'Sad ozbiljno za odrasle?',
+    'pill.larga': 'Sad ozbiljno duga?',
+    'pill.repetir': 'Sad ozbiljno ponavljanje?',
+
+    'toast.sinResultadosFiltro': '😕 Nema rezultata za te filtere',
+    'card.sinResultadosFiltroPlano': 'Nema rezultata za te filtere',
+    'toast.sinCandidatos': 'Nema kandidata, proveri špil',
+    'toast.sinTitulosCategoria': 'Nema naslova u ovoj kategoriji',
+    'toast.estadoReiniciado': 'Stanje resetovano',
+
+    'modal.noDisponible.title': 'Nije dostupno',
+    'modal.noDisponible.msg': 'Nije dostupno ni na jednoj platformi. Žao mi je.',
+    'btn.entendido': 'Razumem',
+
+    'modal.nuevaTemp.title': 'Nova sezona',
+    'modal.nuevaTemp.msg': 'Nova sezona se emituje ili tek treba da počne. Želiš li ipak da počneš?',
+    'btn.siArrancar': 'Da, počni',
+    'btn.cancelar': 'Otkaži',
+
+    'modal.disponibleEn': 'Dostupno na: ',
+    'modal.sinPlataforma': 'Nema evidentirane platforme.',
+    'btn.okElegirEsta': 'OK, izaberi ovo',
+
+    'modal.reiniciar.title': 'Resetuj stanje',
+    'modal.reiniciar.msg': 'Vraća špil, istoriju i brojače na početno probno stanje (do Kakegurui). Ne briše niti menja ništa u Google Sheet-u. Potvrđuješ?',
+    'btn.siReiniciar': 'Da, resetuj',
+
+    'platform.sinDato': 'Nema podataka',
+    'unidad.eps': 'ep.',
+    'sinopsis.verMas': 'Prikaži više',
+    'sinopsis.verMenos': 'Prikaži manje',
+
+    'cat.adulto': 'Za odrasle',
+    'cat.larga': 'Duga',
+    'cat.repeticion': 'Ponavljanje',
+    'cat.nuevaTemporada': 'Nova sezona',
+    'tag.emotional': 'Emotivno',
+
+    'era.Dorada.full': 'Zlatna era', 'era.Dorada.short': 'Zlatna',
+    'era.Moderna.full': 'Moderna era', 'era.Moderna.short': 'Moderna',
+    'era.Clasica.full': 'Klasična era', 'era.Clasica.short': 'Klasična',
+    'era.Extra.short': 'Extra'
+  }
+};
+// Nombre deliberadamente "tr" (no "t"): "t" ya se usa en todo ui.js como
+// variable local para "el titulo actual" (const t = pick.title, etc.) --
+// usar ese nombre para la funcion de traduccion hubiera quedado tapado
+// (shadowed) por esas variables locales y roto silenciosamente.
+function tr(key, vars) {
+  const dict = (typeof state !== 'undefined' && state && I18N[state.lang]) || I18N.es;
+  let str = (key in dict) ? dict[key] : (key in I18N.es ? I18N.es[key] : key);
+  if (vars) Object.keys(vars).forEach(k => { str = str.split('{' + k + '}').join(vars[k]); });
+  return str;
+}
+// band/era vienen de datos internos (claves en español: 'Excelente',
+// 'Dorada', etc. -- son tambien los valores reales de Categoria/banda en el
+// Sheet, no se tocan). Si no hay traduccion para esa clave especifica (ej.
+// las etiquetas de Adulto/Larga/Repeticion/Nueva Temporada que logic.js ya
+// graba tal cual -- texto en español -- directo en state.history, ver
+// comentario en commitExtra), se devuelve el valor original sin tocar en vez
+// del nombre de la clave de busqueda.
+function trBand(band) { const v = tr('band.' + band); return v === ('band.' + band) ? band : v; }
+function trEraFull(era) { const v = tr('era.' + era + '.full'); return v === ('era.' + era + '.full') ? era : v; }
+function trEraShort(era) { const v = tr('era.' + era + '.short'); return v === ('era.' + era + '.short') ? era : v; }
 
 let MAIN_POOL = [], LARGA_POOL = [], ADULTO_POOL = [], REP_POOL = [], NUEVAS_TEMP = [];
 // Pool para Lista Completa: TODOS los titulos validos (Era + Larga/Adulto/
@@ -331,7 +744,10 @@ function seedInitialState() {
     view: 'home',
     devMode: false,
     listaCols: 2,
-    animStyle: 'cards'
+    animStyle: 'cards',
+    // No persiste entre recargas -- mismo criterio que theme/devMode (ver
+    // comentario junto a I18N mas arriba).
+    lang: 'es'
   };
 }
 
